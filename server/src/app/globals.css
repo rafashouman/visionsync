@@ -1,0 +1,248 @@
+/* ═════════ Tema Vision (escuro) ═════════
+   Todas as cores do sistema vêm daqui. Pra mudar o visual (ou criar o tema
+   claro), é só trocar os valores destas variáveis. */
+:root {
+  --bg: #040a1c;
+  --card-top: rgba(12, 33, 80, 0.8);
+  --card-bottom: rgba(8, 22, 56, 0.8);
+  --inner: rgba(5, 14, 38, 0.72); /* cartões dentro de cartões */
+  --field: rgba(255, 255, 255, 0.06);
+  --line: rgba(224, 36, 94, 0.34); /* borda em vinho */
+  --soft: rgba(143, 163, 214, 0.18); /* borda discreta */
+
+  --strong: #ffffff; /* títulos e números em destaque */
+  --on-accent: #ffffff; /* texto sobre fundo vinho */
+  --panel-1: #0c2150; /* janelas e painéis que flutuam */
+  --panel-2: #081638;
+  --popup: #0c2150;
+
+  --text: #e8eefc;
+  --text-2: #c9d5f2;
+  --nav: #b9c6e6; /* texto do menu lateral */
+  --muted: #8ea0c8;
+  --faint: #6f82ad;
+
+  --accent: #e0245e; /* vinho fluorescente */
+  --accent-hover: #f23a72;
+  --accent-text: #ff8fb1; /* texto e links em vinho claro */
+  --accent-soft: rgba(224, 36, 94, 0.14);
+  --accent-line: rgba(224, 36, 94, 0.36);
+  --glow: rgba(224, 36, 94, 0.45);
+  --vred: #d13a52; /* vermelho do Visão: títulos pequenos e ícones */
+  --gold: #e3b341; /* dourado do Visão: favoritos */
+
+  --ok: #34d399;
+  --ok-text: #7ef0c0;
+  --ok-bg: rgba(52, 211, 153, 0.13);
+  --ok-line: rgba(52, 211, 153, 0.3);
+  --late: #ff7a59;
+  --late-text: #ffb39c;
+  --late-bg: rgba(255, 122, 89, 0.15);
+  --late-line: rgba(255, 122, 89, 0.32);
+  --wait: #f5b84a;
+  --wait-text: #ffd48a;
+  --wait-bg: rgba(245, 184, 74, 0.14);
+  --wait-line: rgba(245, 184, 74, 0.3);
+  --vio-text: #cdbfff;
+  --vio-bg: rgba(167, 139, 250, 0.14);
+  --vio-line: rgba(167, 139, 250, 0.3);
+  --danger: #ff7a8a;
+
+  --overlay: rgba(2, 6, 18, 0.68);
+  --card-shadow: 0 0 28px rgba(224, 36, 94, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; scrollbar-color: rgba(143, 163, 214, 0.35) transparent; }
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 560px at 85% -8%, rgba(59, 130, 246, 0.2), transparent 60%),
+    radial-gradient(900px 520px at -5% 105%, rgba(224, 36, 94, 0.14), transparent 60%);
+  background-attachment: fixed;
+}
+a { color: var(--accent-text); }
+code { background: var(--field); padding: 1px 6px; border-radius: 6px; font-size: 0.92em; }
+::selection { background: rgba(224, 36, 94, 0.45); color: #fff; }
+
+/* Campos: escuros por padrão em todo o sistema */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]),
+select,
+textarea {
+  background: var(--field);
+  color: var(--text);
+  border: 1px solid var(--soft);
+  border-radius: 8px;
+  font-family: inherit;
+}
+input::placeholder, textarea::placeholder { color: var(--faint); }
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(224, 36, 94, 0.22);
+}
+select option { background: #0a1a40; color: var(--text); }
+input[type="checkbox"] { accent-color: var(--accent); }
+button { font-family: inherit; }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+button:disabled { cursor: not-allowed; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ═════════ Estrutura: menu lateral + área principal ═════════ */
+.v-shell {
+  display: grid;
+  grid-template-columns: 244px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 100vh;
+  padding: 16px;
+}
+.v-card {
+  background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--card-shadow);
+}
+.v-side {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 12px;
+  overflow-y: auto;
+}
+.v-main { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.v-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 14px; font-size: 20px; font-weight: 700; color: var(--strong); text-decoration: none; }
+.v-brand b { color: var(--accent); }
+.v-mark { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); box-shadow: 0 0 18px var(--glow); color: var(--on-accent); }
+.v-grp { font-size: 11px; letter-spacing: 1.2px; color: var(--vred); font-weight: 700; padding: 14px 10px 6px; }
+.v-nav {
+  display: flex; align-items: center; gap: 11px; width: 100%;
+  padding: 10px 12px; border-radius: 12px; border: 0; background: transparent;
+  color: var(--nav); font-size: 14px; font-weight: 500; text-align: left; text-decoration: none; cursor: pointer;
+}
+.v-nav svg { color: var(--vred); flex: none; }
+.v-nav:hover { background: rgba(255, 255, 255, 0.05); }
+.v-nav.on { background: var(--accent); color: var(--on-accent); box-shadow: 0 0 22px var(--glow); }
+.v-nav.on svg { color: var(--on-accent); }
+.v-nav.off { cursor: default; color: var(--faint); }
+.v-nav.off:hover { background: transparent; filter: none; }
+.v-nav.off svg { color: var(--faint); opacity: 0.7; }
+.v-soon { margin-left: auto; white-space: nowrap; flex: none; font-size: 10px; font-weight: 700; color: var(--faint); border: 1px solid var(--soft); border-radius: 999px; padding: 1px 7px; }
+.v-me { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px 8px 4px; border-top: 1px solid var(--soft); }
+.v-av { width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--on-accent); background: linear-gradient(135deg, #3b82f6, var(--accent)); }
+.v-me small { display: block; color: var(--muted); font-size: 11px; }
+.v-me .who { min-width: 0; flex: 1; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v-out { background: transparent; border: 1px solid var(--soft); color: var(--muted); border-radius: 10px; padding: 6px 8px; cursor: pointer; display: grid; place-items: center; }
+
+/* Cabeçalho de página e números em destaque */
+.v-title { margin: 0; font-size: 26px; font-weight: 700; color: var(--strong); }
+.v-sub { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.v-kpis { display: grid; grid-template-columns: repeat(4, 1fr); padding: 18px 6px; }
+.v-kpi { padding: 2px 22px; border-right: 1px solid var(--soft); }
+.v-kpi:last-child { border-right: 0; }
+.v-kpi .l { font-size: 13px; color: var(--muted); }
+.v-kpi .n { font-size: 28px; font-weight: 700; margin: 4px 0; color: var(--strong); }
+.v-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.v-pill.ok { color: var(--ok-text); background: var(--ok-bg); }
+.v-pill.late { color: var(--late-text); background: var(--late-bg); }
+.v-pill.wait { color: var(--wait-text); background: var(--wait-bg); }
+.v-pill.mute { color: var(--muted); background: var(--field); }
+
+@media (max-width: 900px) {
+  .v-shell { grid-template-columns: 1fr; padding: 10px; }
+  .v-side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px; gap: 4px; }
+  .v-brand { padding: 0 8px 0 4px; font-size: 17px; }
+  .v-grp, .v-soon, .v-nav.off { display: none; }
+  .v-nav { width: auto; padding: 8px 11px; font-size: 13px; }
+  .v-me { margin: 0 0 0 auto; border: 0; padding: 0; }
+  .v-me .who { display: none; }
+  .v-kpis { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+  .v-kpi { padding: 2px 14px; }
+  .v-kpi:nth-child(2) { border-right: 0; }
+}
+
+/* ═════════ Telas de entrar e cadastrar ═════════ */
+
+/* Foto de fundo (public/login-bg.jpg). O cartão fica à direita pra não cobrir o rosto. */
+.auth-bg {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 24px clamp(16px, 4vw, 80px);
+  background-color: #040a1c;
+  background-image:
+    linear-gradient(90deg, rgba(4, 10, 28, 0) 35%, rgba(4, 10, 28, 0.55) 100%),
+    url("/login-bg.jpg");
+  background-size: cover;
+  background-position: center;
+}
+
+.auth-card {
+  width: 360px;
+  max-width: 100%;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  color: var(--text);
+  background: rgba(7, 18, 48, 0.74);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(224, 36, 94, 0.38);
+  box-shadow: 0 0 40px rgba(224, 36, 94, 0.16), 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+.auth-card a { color: #ff5c8a; }
+
+.auth-title { margin: 0; font-size: 22px; font-weight: 700; color: #ffffff; }
+.auth-sub { margin: 4px 0 18px; font-size: 14px; color: #9fb0d6; }
+.auth-label { margin: 10px 0 4px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.auth-error { margin: 10px 0 0; font-size: 13px; color: #ff8a8a; }
+.auth-foot { margin: 14px 0 0; font-size: 13px; text-align: center; color: #9fb0d6; }
+
+.auth-input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.auth-input::placeholder { color: #6f82ad; }
+/* O Chrome pinta campos preenchidos de branco: mantém escuro */
+.auth-input:-webkit-autofill,
+.auth-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  caret-color: var(--text);
+  box-shadow: 0 0 0 1000px #0b1a40 inset;
+}
+
+.auth-btn {
+  margin-top: 18px;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  box-shadow: 0 0 18px var(--glow);
+}
+.auth-btn:hover:not(:disabled) { background: var(--accent-hover); filter: none; }
+.auth-btn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+/* Celular e janela estreita: cartão no centro, foto mais escura pra dar leitura */
+@media (max-width: 820px) {
+  .auth-bg {
+    justify-content: center;
+    background-image:
+      linear-gradient(rgba(4, 10, 28, 0.55), rgba(4, 10, 28, 0.72)),
+      url("/login-bg.jpg");
+    background-position: 42% center;
+  }
+}

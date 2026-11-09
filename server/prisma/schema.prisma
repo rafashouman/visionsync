@@ -1,0 +1,279 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Conta da taróloga (multiusuário / SaaS).
+model User {
+  id        String   @id @default(cuid())
+  name      String?
+  email     String   @unique
+  password  String?
+  apiToken  String?  @unique // token da extensão do Chrome
+
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts  Contact[]
+  purchases Purchase[]
+  lists     CrmList[]
+  charges   Charge[]
+  notes     Note[]
+  reminders Reminder[]
+  metaPixels MetaPixel[]
+  quickReplies QuickReply[]
+
+  @@map("users")
+}
+
+/// Contato/cliente do CRM (vem das conversas do WhatsApp).
+model Contact {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  phone     String
+  email     String?
+
+  // Dados do lead
+  source    String?   // origem: "anuncio" | "organico" | "indicacao" | "outro"
+  birthDate DateTime? // nascimento (guardado ao meio-dia de Brasília)
+
+  // Funil
+  nextStep       String?   // próximo passo ("ligar sexta", "mandar áudio")
+  nextStepAt     DateTime? // prazo do próximo passo
+  lastActivityAt DateTime  @default(now()) // última movimentação (compra, etiqueta, próximo passo)
+
+  // Estado da conversa no WhatsApp (vem da importação pela extensão)
+  waLastAt     DateTime? // data da última mensagem
+  waLastFromMe Boolean? // true = a última mensagem foi sua; false = da cliente (aguardando você)
+  waUnread     Int      @default(0) // mensagens não lidas
+  waArchived   Boolean  @default(false)
+  waSyncedAt   DateTime? // última vez que a extensão atualizou isto
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchases   Purchase[]
+  charges     Charge[]
+  notes       Note[]
+  reminders   Reminder[]
+  memberships CrmListMember[]
+
+  @@index([userId])
+  @@index([userId, phone])
+  @@index([userId, lastActivityAt])
+  @@map("contacts")
+}
+
+/// Compra registrada (base da recorrência e do disparo pro Meta).
+model Purchase {
+  id          String   @id @default(cuid())
+  userId      String
+  contactId   String
+  amount      Float
+  productName String?
+  purchasedAt DateTime @default(now())
+  source      String   @default("whatsapp") // "whatsapp" | "manual" | "ad"
+
+  // Conversão Meta (CAPI)
+  metaPixelId   String? // pixel usado (ou tentado) no envio
+  ctwaClid      String?
+  metaEventSent Boolean   @default(false)
+  metaEventId   String?
+  metaSentAt    DateTime?
+  metaError     String? // último erro de envio (ou "expirado")
+
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  metaPixel MetaPixel? @relation(fields: [metaPixelId], references: [id], onDelete: SetNull)
+  charge  Charge? // cobrança que originou esta compra (se veio de "marcar como paga")
+
+  @@index([userId, contactId])
+  @@index([contactId, purchasedAt])
+  @@index([userId, metaEventSent])
+  @@map("purchases")
+}
+
+enum QuickReplyType {
+  TEXT
+  AUDIO
+  IMAGE
+  VIDEO
+  DOCUMENT
+  CONTACT
+  SEQUENCE
+}
+
+/// Resposta rápida: mensagem pronta pra usar na conversa (digitando ";" na extensão).
+/// Hoje só TEXT é criado; os outros tipos já têm lugar no modelo.
+model QuickReply {
+  id         String         @id @default(cuid())
+  userId     String
+  type       QuickReplyType @default(TEXT)
+  name       String // como ela acha a mensagem depois
+  category   String? // só ela vê (ex.: PROMOCIONAL), sempre em maiúsculas
+  favorite   Boolean        @default(false)
+  usageCount Int            @default(0)
+  position   Int            @default(0) // ordem manual (arrastar), ainda não usada pela tela
+  shortcut   String? // palavra depois do ";" (minúscula, única por conta)
+  text       String? // mensagem (TEXT) ou legenda (IMAGE, VIDEO, DOCUMENT)
+
+  // Mídia (AUDIO, IMAGE, VIDEO, DOCUMENT). O arquivo em si fica na tabela QuickReplyFile,
+  // pra a lista nunca carregar o conteúdo.
+  mediaName   String?
+  mediaMime   String? // sempre um tipo da lista permitida (nunca o que o navegador disse)
+  mediaSize   Int? // bytes
+  viewOnce    Boolean @default(false) // imagem/vídeo: visualização única
+  asVoiceNote Boolean @default(false) // áudio: "enviar como áudio gravado na hora"
+
+  // Contato (CONTACT): chega como cartão de contato
+  contactName  String?
+  contactPhone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file QuickReplyFile?
+
+  @@unique([userId, shortcut])
+  @@index([userId, category])
+  @@map("quick_replies")
+}
+
+/// Conteúdo do arquivo de uma resposta rápida (guardado no banco).
+/// Tabela separada de propósito: a lista de respostas nunca lê esta tabela.
+model QuickReplyFile {
+  quickReplyId String @id
+  data         Bytes
+
+  quickReply QuickReply @relation(fields: [quickReplyId], references: [id], onDelete: Cascade)
+
+  @@map("quick_reply_files")
+}
+
+/// Anotação sobre uma cliente (várias por contato, em ordem de data).
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  contactId String
+  text      String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, createdAt])
+  @@map("notes")
+}
+
+/// Lembrete de voltar a falar com uma cliente (com data e hora). Adiar muda o horário e soma 1 em snoozeCount.
+model Reminder {
+  id          String    @id @default(cuid())
+  userId      String
+  contactId   String
+  text        String
+  dueAt       DateTime
+  doneAt      DateTime?
+  snoozeCount Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([userId, doneAt, dueAt])
+  @@index([contactId])
+  @@map("reminders")
+}
+
+/// Destino de conversões (pixel/conjunto de dados do Meta). Cada lista pode apontar pra um.
+model MetaPixel {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  datasetId     String
+  accessToken   String // criptografado (lib/crypto)
+  testEventCode String?
+  repeatMode    String   @default("purchase") // recompras: "purchase" (igual à 1ª) | "custom" (evento Recompra) | "none" (não envia)
+  isDefault     Boolean  @default(false) // usado quando nenhuma lista da cliente aponta pra um pixel
+  createdAt     DateTime @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lists     CrmList[]
+  purchases Purchase[]
+
+  @@index([userId])
+  @@map("meta_pixels")
+}
+
+enum ChargeStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+/// Cobrança: dinheiro a receber de uma cliente. Ao ser paga, vira uma Purchase
+/// (e dispara o evento de conversão pro Meta). "Vencida" não é status: é
+/// PENDING com vencimento antes de hoje (calculado na leitura).
+model Charge {
+  id          String       @id @default(cuid())
+  userId      String
+  contactId   String
+  amount      Float
+  description String?
+  dueDate     DateTime // dia do vencimento (guardado ao meio-dia de Brasília)
+  status      ChargeStatus @default(PENDING)
+  paidAt      DateTime?
+  purchaseId  String?      @unique // compra criada quando foi paga
+  paymentLink String? // link de pagamento ou Pix copia-e-cola, vai na mensagem
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  purchase Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([contactId])
+  @@map("charges")
+}
+
+/// Etiqueta/Lista colorida (também vira coluna do funil kanban).
+model CrmList {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("#8b5cf6")
+  order     Int      @default(0)
+  metaPixelId String? // pixel que recebe as compras das clientes desta lista
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  members CrmListMember[]
+  metaPixel MetaPixel? @relation(fields: [metaPixelId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("crm_lists")
+}
+
+model CrmListMember {
+  id        String   @id @default(cuid())
+  listId    String
+  contactId String
+  createdAt DateTime @default(now())
+
+  list    CrmList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, contactId])
+  @@index([contactId])
+  @@map("crm_list_members")
+}

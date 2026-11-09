@@ -1,0 +1,403 @@
+/* Vision CRM dentro do WhatsApp Web. Tema escuro: azul-marinho + vinho fluorescente. */
+
+#vcrm-root {
+  --bg: #040a1c;
+  --panel: #081638;
+  --card: rgba(12, 33, 80, 0.7);
+  --field: rgba(255, 255, 255, 0.07);
+  --soft: rgba(143, 163, 214, 0.2);
+  --line: rgba(224, 36, 94, 0.34);
+  --text: #e8eefc;
+  --muted: #8ea0c8;
+  --accent: #e0245e;
+  --accent-text: #ff8fb1;
+  --glow: rgba(224, 36, 94, 0.45);
+  --vred: #d13a52;
+  --gold: #e3b341;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+}
+#vcrm-root *, #vcrm-bar *, #vcrm-pop * { box-sizing: border-box; font-family: inherit; }
+
+/* Empurra o WhatsApp pra esquerda: nada fica escondido atrás da coluna */
+html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background: #0b141a; }
+
+/* ── Coluna de ícones ── */
+.vc-rail {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 56px; z-index: 2147483000;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0;
+  background: linear-gradient(180deg, #0c2150, #060f2a);
+  border-left: 1px solid var(--line);
+  box-shadow: -4px 0 24px rgba(224, 36, 94, 0.12);
+}
+.vc-logo { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--accent); color: #fff; box-shadow: 0 0 16px var(--glow); margin-bottom: 8px; }
+.vc-grow { flex: 1; }
+.vc-ico {
+  width: 48px; padding: 7px 0 5px; border: 0; border-radius: 12px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  background: transparent; color: #b9c6e6;
+}
+.vc-ico svg { color: var(--vred); }
+.vc-ico span { font-size: 9.5px; line-height: 1; }
+.vc-ico:hover { background: rgba(255, 255, 255, 0.07); }
+.vc-ico.on { background: var(--accent); color: #fff; box-shadow: 0 0 18px var(--glow); }
+.vc-ico.on svg { color: #fff; }
+
+/* ── Painel ── */
+.vc-panel {
+  position: fixed; top: 0; right: 56px; bottom: 0; width: 340px; z-index: 2147482999;
+  display: flex; flex-direction: column;
+  background: radial-gradient(500px 260px at 90% -5%, rgba(59, 130, 246, 0.18), transparent 60%), var(--bg);
+  border-left: 1px solid var(--soft);
+}
+.vc-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--soft); }
+.vc-title { font-size: 16px; font-weight: 700; color: #fff; }
+.vc-x { border: 0; background: transparent; color: var(--muted); cursor: pointer; padding: 4px; border-radius: 8px; display: grid; place-items: center; }
+.vc-x:hover { color: #fff; background: rgba(255, 255, 255, 0.07); }
+.vc-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: rgba(143, 163, 214, 0.35) transparent; }
+
+.vc-muted { color: var(--muted); font-size: 13px; margin: 0; }
+.vc-muted.pad { padding: 8px 10px; }
+.vc-hint { color: var(--muted); font-size: 12px; margin: 0; }
+.vc-hint code, .vc-reply code, #vcrm-pop code { background: rgba(255, 255, 255, 0.08); padding: 0 5px; border-radius: 5px; font-size: 11px; color: var(--accent-text); }
+.vc-empty { text-align: center; padding: 30px 8px; }
+.vc-empty b { color: #fff; font-size: 15px; }
+.vc-empty p { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.vc-sub { color: var(--muted); font-size: 12px; }
+.vc-sec { font-size: 11px; letter-spacing: 1px; font-weight: 700; text-transform: uppercase; color: var(--vred); margin-top: 6px; }
+.vc-sec.first { margin: 0; }
+
+.vc-person { display: flex; align-items: center; gap: 12px; }
+.vc-avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: linear-gradient(135deg, #3b82f6, var(--accent)); }
+.vc-name { font-size: 16px; font-weight: 700; color: #fff; }
+
+.vc-card {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px; margin: 0;
+  background: linear-gradient(180deg, rgba(12, 33, 80, 0.8), rgba(8, 22, 56, 0.8));
+  border: 1px solid var(--line); border-radius: 14px;
+}
+.vc-card.note p { margin: 0; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.vc-card.charge.vencida { border-color: rgba(255, 122, 89, 0.5); }
+.vc-card.charge.paga { opacity: 0.8; }
+
+#vcrm-root input, #vcrm-root textarea {
+  width: 100%; padding: 9px 10px; font-size: 13px; color: var(--text);
+  background: var(--field); border: 1px solid var(--soft); border-radius: 9px; outline: none; resize: vertical;
+}
+#vcrm-root input::placeholder, #vcrm-root textarea::placeholder { color: #6f82ad; }
+#vcrm-root input:focus, #vcrm-root textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(224, 36, 94, 0.22); }
+#vcrm-root input[type="date"] { color-scheme: dark; }
+
+.vc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 0; border-radius: 10px; padding: 9px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: #fff; background: var(--accent); box-shadow: 0 0 14px var(--glow);
+}
+.vc-btn:hover { filter: brightness(1.12); }
+.vc-btn.sm { padding: 5px 10px; font-size: 12px; }
+.vc-ghost { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: transparent; color: var(--accent-text); border-radius: 9px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.vc-note { font-size: 12px; color: var(--gold); }
+.vc-note:empty { display: none; }
+
+.vc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; background: color-mix(in srgb, var(--c) 55%, #040a1c); border: 1px solid var(--c); }
+.vc-chip button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0; opacity: 0.8; }
+.vc-add { position: relative; }
+.vc-menu { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 6px); background: #0c2150; border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5); }
+.vc-menu[hidden] { display: none; }
+.vc-menu > button { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; color: var(--text); text-align: left; padding: 8px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.vc-menu > button:hover { background: rgba(255, 255, 255, 0.07); }
+.vc-menu i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.vc-newlist { display: flex; gap: 6px; padding: 6px 2px 2px; }
+
+.vc-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; color: #cdbfff; background: rgba(167, 139, 250, 0.14); border: 1px solid rgba(167, 139, 250, 0.3); }
+.vc-badge.gold, .vc-badge.pendente { color: #ffd48a; background: rgba(245, 184, 74, 0.14); border-color: rgba(245, 184, 74, 0.3); }
+.vc-badge.vencida { color: #ffb39c; background: rgba(255, 122, 89, 0.15); border-color: rgba(255, 122, 89, 0.32); }
+.vc-badge.paga { color: #7ef0c0; background: rgba(52, 211, 153, 0.13); border-color: rgba(52, 211, 153, 0.3); }
+.vc-badge.cancelada { color: var(--muted); background: var(--field); border-color: var(--soft); }
+
+.vc-stats { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--card); border: 1px solid var(--soft); border-radius: 14px; padding: 10px 0; }
+.vc-stats div { text-align: center; border-right: 1px solid var(--soft); padding: 0 4px; min-width: 0; }
+.vc-stats div:last-child { border-right: 0; }
+.vc-stats b { display: block; font-size: 15px; color: #fff; }
+.vc-stats span { font-size: 11px; color: var(--muted); }
+
+.vc-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--soft); }
+.vc-row.flat { border: 0; padding: 0; }
+.vc-row b { display: block; font-size: 13px; color: #fff; }
+.vc-row span { font-size: 12px; color: var(--muted); }
+.vc-row em { font-style: normal; font-weight: 700; color: #7ef0c0; font-size: 13px; }
+.vc-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.vc-search { margin-bottom: 2px; }
+.vc-reply { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; cursor: pointer; padding: 10px; color: var(--text); background: var(--card); border: 1px solid var(--soft); border-radius: 12px; }
+.vc-reply:hover { border-color: var(--accent); }
+.vc-rico { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 9px; color: var(--accent-text); background: rgba(224, 36, 94, 0.14); border: 1px solid var(--line); }
+.vc-rtxt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vc-rtxt b { font-size: 13px; color: #fff; }
+.vc-rtxt span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.vc-fav { color: var(--gold); margin-right: 4px; display: inline-flex; vertical-align: -1px; }
+
+.vc-toast { position: fixed; right: 72px; bottom: 24px; max-width: 320px; z-index: 2147483001; padding: 10px 14px; border-radius: 12px; font-size: 13px; color: #fff; background: #0c2150; border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+
+/* ── Barra de respostas rápidas acima do campo de mensagem ── */
+#vcrm-bar {
+  display: flex; gap: 6px; overflow-x: auto; padding: 6px 12px; scrollbar-width: none;
+  background: #040a1c; border-top: 1px solid rgba(224, 36, 94, 0.34);
+}
+#vcrm-bar::-webkit-scrollbar { display: none; }
+#vcrm-bar button {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #ff8fb1;
+  background: rgba(224, 36, 94, 0.14); border: 1px solid rgba(224, 36, 94, 0.36);
+}
+#vcrm-bar button:hover { background: #e0245e; color: #fff; }
+#vcrm-bar svg { color: #e3b341; }
+
+/* ── Lista que abre ao digitar ";" ── */
+#vcrm-pop { margin: 0 12px 6px; background: #0c2150; border: 1px solid rgba(224, 36, 94, 0.4); border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+#vcrm-pop button { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; width: 100%; padding: 9px 12px; border: 0; background: transparent; color: #e8eefc; text-align: left; cursor: pointer; font-size: 13px; }
+#vcrm-pop button:hover { background: rgba(224, 36, 94, 0.18); }
+#vcrm-pop span { flex-basis: 100%; font-size: 12px; color: #8ea0c8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Barrinha lateral ao lado da conversa ── */
+#vcrm-side {
+  position: fixed; z-index: 2147482990; display: flex; flex-direction: column; gap: 2px; padding: 4px;
+  background: rgba(4, 10, 28, 0.94); border: 1px solid rgba(224, 36, 94, 0.4); border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 18px rgba(224, 36, 94, 0.15);
+}
+#vcrm-side button {
+  position: relative; width: 44px; padding: 7px 0 4px; border: 0; border-radius: 10px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; background: transparent; color: #b9c6e6;
+}
+#vcrm-side button svg { color: #ff8fb1; }
+#vcrm-side button span { font-size: 9px; line-height: 1; }
+#vcrm-side button:hover { background: rgba(224, 36, 94, 0.2); }
+#vcrm-side button b { position: absolute; top: 1px; right: 5px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 10px; line-height: 15px; text-align: center; color: #fff; background: #e0245e; }
+#vcrm-side .vs-top { padding: 2px 0; height: 16px; }
+#vcrm-side .vs-top svg { color: #8ea0c8; }
+#vcrm-side.vs-min .vs-top svg { transform: rotate(180deg); }
+
+/* ── Importar ── */
+.vc-bar { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.vc-bar i { display: block; height: 100%; background: #e0245e; box-shadow: 0 0 12px rgba(224, 36, 94, 0.6); transition: width 0.3s; }
+.vc-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e8eefc; }
+#vcrm-root input[type="checkbox"] { width: auto; accent-color: #e0245e; }
+.vc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Aviso: clientes esperam sua resposta ── */
+#vcrm-wait {
+  position: fixed; left: 76px; bottom: 28px; width: 340px; z-index: 2147482995; padding: 14px 16px 10px;
+  background: #1f2c34; color: #e9edef; border-radius: 14px; border: 1px solid rgba(224, 36, 94, 0.45);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55), 0 0 22px rgba(224, 36, 94, 0.18); font-family: "Segoe UI", system-ui, sans-serif;
+}
+#vcrm-wait > b { font-size: 16px; color: #fff; }
+#vcrm-wait > p { margin: 4px 0 8px; font-size: 13px; color: #aebac1; }
+#vcrm-wait .vw-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 6px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; text-align: left; color: inherit; }
+#vcrm-wait .vw-row:hover { background: rgba(255, 255, 255, 0.07); }
+#vcrm-wait .vw-av { width: 36px; height: 36px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 700; color: #fff; background: linear-gradient(135deg, #3b82f6, #e0245e); }
+#vcrm-wait .vw-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#vcrm-wait .vw-tx b { font-size: 14px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#vcrm-wait .vw-tx small { font-size: 12px; color: #aebac1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#vcrm-wait .vw-time { flex: none; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px; color: #ffd48a; background: rgba(245, 184, 74, 0.16); }
+#vcrm-wait .vw-time.late { color: #ff8fa0; background: rgba(224, 36, 94, 0.2); }
+#vcrm-wait .vw-more { margin: 2px 6px 4px; font-size: 12px; color: #aebac1; }
+#vcrm-wait .vw-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+#vcrm-wait .vw-foot button { border: 0; background: transparent; cursor: pointer; font-size: 13px; font-weight: 600; color: #ff8fb1; }
+#vcrm-wait .vw-foot button:last-child { color: #aebac1; }
+
+/* Recolhida: igual ao Hotzapp, os ícones ficam e só os textos somem */
+#vcrm-side.vs-min { padding: 4px 3px; border-radius: 16px; }
+#vcrm-side.vs-min button { width: 34px; padding: 8px 0; }
+#vcrm-side.vs-min button span { display: none; }
+#vcrm-side.vs-min button b { right: 1px; top: 2px; }
+#vcrm-side.vs-min .vs-top { padding: 2px 0; }
+
+/* Recolhida, versão fina (como a do Hotzapp) */
+#vcrm-side.vs-min { padding: 3px 2px; gap: 0; border-radius: 14px; }
+#vcrm-side.vs-min button { width: 26px; padding: 6px 0; border-radius: 8px; }
+#vcrm-side.vs-min button svg { width: 15px; height: 15px; }
+#vcrm-side.vs-min .vs-top { height: 14px; padding: 0; }
+#vcrm-side.vs-min .vs-top svg { width: 10px; height: 10px; }
+#vcrm-side.vs-min button b { min-width: 12px; height: 12px; line-height: 12px; font-size: 8px; padding: 0 3px; right: -3px; top: 0; }
+
+/* Foto, "já resolvi" e tempo curto no aviso */
+#vcrm-wait .vw-line { display: flex; align-items: center; gap: 2px; }
+#vcrm-wait .vw-line .vw-row { flex: 1; min-width: 0; }
+#vcrm-wait img.vw-av { object-fit: cover; background: #2a3942; }
+#vcrm-wait .vw-time.ok { color: #7ef0c0; background: rgba(52, 211, 153, 0.15); }
+#vcrm-wait .vw-done { flex: none; width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #aebac1; cursor: pointer; display: grid; place-items: center; }
+#vcrm-wait .vw-done:hover { background: rgba(52, 211, 153, 0.18); color: #7ef0c0; }
+
+/* Importar: escolher etiquetas */
+.vc-labels { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; padding: 8px 10px; background: rgba(5, 14, 38, 0.6); border: 1px solid var(--soft); border-radius: 10px; }
+.vc-check span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-check em { font-style: normal; font-size: 11px; font-weight: 700; color: var(--accent-text); background: rgba(224, 36, 94, 0.14); border-radius: 999px; padding: 1px 8px; }
+.vc-quick { display: flex; gap: 6px; }
+
+/* O aviso fica à direita, ao lado do painel do Hotzapp (não cobre a lista de conversas) */
+#vcrm-wait { left: auto; right: calc(var(--vcrm-pad, 56px) + 372px); }
+
+/* Mesmo lugar do aviso do Hotzapp: encostado na coluna de ícones, acima do campo de mensagem */
+#vcrm-wait { left: auto; right: calc(var(--vcrm-pad, 56px) + 4px); bottom: 130px; max-height: calc(100vh - 170px); overflow-y: auto; }
+
+/* ── Botões no cabeçalho do chat: agendar, encerrar, funil ── */
+#vcrm-hdr { position: fixed; z-index: 2147482990; display: flex; align-items: center; gap: 8px; height: 34px; font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-hdr button { height: 34px; min-width: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; cursor: pointer; color: #ff8fb1; background: rgba(4, 10, 28, 0.92); border: 1px solid rgba(224, 36, 94, 0.45); border-radius: 999px; font-size: 13px; font-weight: 600; }
+#vcrm-hdr button:hover { background: #e0245e; color: #fff; }
+#vcrm-hdr .vh-pill { border-style: dashed; padding: 0 14px; color: #e8eefc; }
+#vcrm-hdr .vh-pill i, #vcrm-hpop .vh-row i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#vcrm-hpop { position: fixed; z-index: 2147482991; width: 300px; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #0c2150; color: #e8eefc; border: 1px solid rgba(224, 36, 94, 0.45); border-radius: 14px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55); font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-hpop > b { font-size: 15px; color: #fff; }
+#vcrm-hpop input { width: 100%; padding: 8px 10px; font-size: 13px; color: #e8eefc; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(143, 163, 214, 0.25); border-radius: 9px; outline: none; color-scheme: dark; }
+#vcrm-hpop input:focus { border-color: #e0245e; }
+#vcrm-hpop .vh-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#vcrm-hpop .vh-chips button { padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer; color: #ff8fb1; background: rgba(224, 36, 94, 0.14); border: 1px solid rgba(224, 36, 94, 0.36); border-radius: 999px; }
+#vcrm-hpop .vh-chips button:hover { background: #e0245e; color: #fff; }
+#vcrm-hpop form { display: flex; gap: 6px; }
+#vcrm-hpop .vh-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: 0; border-radius: 8px; background: transparent; color: #e8eefc; text-align: left; font-size: 13px; cursor: pointer; }
+#vcrm-hpop .vh-row:hover { background: rgba(255, 255, 255, 0.08); }
+#vcrm-hpop .vh-row span { flex: 1; }
+#vcrm-hpop .vh-row svg { color: #7ef0c0; }
+
+/* ═══ Cabeçalho do chat: cópia do desenho do Hotzapp (botões redondos escuros + pílula do funil) ═══ */
+#vcrm-hdr { gap: 8px; height: 36px; }
+#vcrm-hdr button { height: 36px; background: #2a3033; color: #d1d7db; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 0; min-width: 36px; font-weight: 500; }
+#vcrm-hdr button:hover { background: #343b3f; color: #fff; }
+#vcrm-hdr .vh-round { width: 36px; }
+#vcrm-hdr .vh-pill { gap: 7px; padding: 0 13px; border: 1px dashed rgba(255, 255, 255, 0.35); background: #1f2427; color: #e9edef; }
+#vcrm-hdr .vh-pill.on { border: 1px solid #3b82f6; background: #1f2427; }
+#vcrm-hdr .vh-pill span { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#vcrm-hdr .vh-pill i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#vcrm-hdr .vh-pill svg:last-child { opacity: 0.7; }
+
+/* Menu "Etapa do funil" (igual ao do Hotzapp) */
+#vcrm-hpop.funnel { width: 270px; padding: 6px 0; gap: 0; background: #1f2427; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; color: #e9edef; }
+#vcrm-hpop .vf-head { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px 10px; }
+#vcrm-hpop .vf-head b { font-size: 14px; color: #fff; }
+#vcrm-hpop .vf-head span { font-size: 12.5px; color: #aebac1; line-height: 1.35; }
+#vcrm-hpop .vf-sep { height: 1px; margin: 4px 0; background: rgba(255, 255, 255, 0.1); }
+#vcrm-hpop .vf-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: 0; background: transparent; color: #e9edef; font-size: 14px; text-align: left; cursor: pointer; }
+#vcrm-hpop .vf-row:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+#vcrm-hpop .vf-row:disabled { opacity: 0.4; cursor: default; }
+#vcrm-hpop .vf-row i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#vcrm-hpop .vf-row span { flex: 1; }
+#vcrm-hpop .vf-row svg { color: #aebac1; flex: none; }
+#vcrm-hpop .vf-row[data-stage] svg { color: #53a6fa; }
+#vcrm-hpop .vf-empty { margin: 0; padding: 8px 16px; font-size: 13px; color: #aebac1; }
+#vcrm-hpop .vf-new { padding: 6px 16px; }
+
+/* ═══ Barra de respostas rápidas: cópia do desenho do Hotzapp (embaixo do campo de mensagem) ═══ */
+#vcrm-bar { display: flex; align-items: center; gap: 8px; padding: 8px 12px 10px; background: #111b21; border-top: 0; overflow: visible; }
+#vcrm-bar button { cursor: pointer; font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-bar .vb-filter { flex: none; width: 34px; height: 34px; border: 0; border-radius: 50%; display: grid; place-items: center; background: #1d6ee6; color: #fff; }
+#vcrm-bar .vb-filter.on { box-shadow: 0 0 0 2px #fff; }
+#vcrm-bar .vb-min { flex: none; width: 24px; height: 24px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 50%; background: transparent; color: #d1d7db; font-size: 15px; line-height: 1; display: grid; place-items: center; padding: 0; }
+#vcrm-bar .vb-chips { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.25) transparent; }
+#vcrm-bar .vb-none { color: #8696a0; font-size: 13px; padding: 6px; }
+#vcrm-bar .vb-chip { flex: none; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 8px; border-radius: 999px; background: #1f2a30; border: 1px solid rgba(255, 255, 255, 0.07); color: #e9edef; font-size: 14px; }
+#vcrm-bar .vb-chip:hover { background: #2a3942; }
+#vcrm-bar .vb-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; background: rgba(255, 255, 255, 0.08); }
+#vcrm-bar .t-AUDIO .vb-ic { color: #a78bfa; background: rgba(167, 139, 250, 0.16); }
+#vcrm-bar .t-TEXT .vb-ic { color: #34d399; background: rgba(52, 211, 153, 0.16); }
+#vcrm-bar .t-IMAGE .vb-ic { color: #60a5fa; background: rgba(96, 165, 250, 0.16); }
+#vcrm-bar .t-VIDEO .vb-ic { color: #fb923c; background: rgba(251, 146, 60, 0.16); }
+#vcrm-bar .t-DOCUMENT .vb-ic { color: #cbd5e1; background: rgba(203, 213, 225, 0.14); }
+#vcrm-bar .t-CONTACT .vb-ic { color: #2dd4bf; background: rgba(45, 212, 191, 0.16); }
+#vcrm-bar .vb-chip.tinted { background: hsl(var(--h) 40% 20%); border-color: hsl(var(--h) 50% 38%); }
+#vcrm-bar .vb-next { flex: none; width: 24px; height: 34px; border: 0; background: transparent; color: #aebac1; display: grid; place-items: center; }
+#vcrm-barmenu { position: fixed; z-index: 2147482992; width: 250px; display: flex; flex-direction: column; gap: 2px; padding: 8px; background: #1f2427; color: #e9edef; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55); font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-barmenu > b { padding: 6px 8px; font-size: 12px; letter-spacing: 0.5px; color: #8696a0; text-transform: uppercase; }
+#vcrm-barmenu button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: #e9edef; font-size: 14px; text-align: left; cursor: pointer; }
+#vcrm-barmenu button:hover { background: rgba(255, 255, 255, 0.07); }
+#vcrm-barmenu button.on { color: #53a6fa; font-weight: 600; }
+#vcrm-barmenu i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#vcrm-barmenu .vm-sep { height: 1px; margin: 6px 0; background: rgba(255, 255, 255, 0.1); }
+#vcrm-barmenu .vm-toggle { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 14px; }
+#vcrm-barmenu .vm-seg { display: flex; gap: 6px; padding: 4px 8px 6px; }
+#vcrm-barmenu .vm-seg button { flex: 1; justify-content: center; border: 1px solid rgba(255, 255, 255, 0.2); }
+#vcrm-barmenu .vm-seg button.on { background: #1d6ee6; color: #fff; border-color: #1d6ee6; }
+#vcrm-bar .vb-ic svg { color: inherit; }
+
+/* ═══ Coluna da direita: fina e só com ícones (como a do Hotzapp) ═══ */
+html.vcrm-on body { padding-right: var(--vcrm-pad, 44px) !important; }
+.vc-rail { width: 44px; padding: 8px 0; gap: 2px; }
+.vc-logo { width: 28px; height: 28px; border-radius: 9px; margin-bottom: 6px; }
+.vc-logo svg { width: 16px; height: 16px; }
+.vc-ico { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 10px; }
+.vc-ico span { display: none; }
+.vc-sep { width: 22px; height: 1px; margin: 6px 0; background: rgba(255, 255, 255, 0.14); }
+.vc-badge-n { position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 10px; line-height: 15px; font-weight: 700; text-align: center; color: #fff; background: #e0245e; }
+.vc-panel { right: 44px; }
+.vc-toast { right: 60px; }
+
+/* ═══ Painel de Respostas rápidas (cópia do Hotzapp) ═══ */
+.rp-top { display: flex; gap: 8px; align-items: center; }
+.rp-top .rp-search { flex: 1; min-width: 0; }
+.rp-top .vc-search { margin: 0; }
+.rp-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.rp-tools { display: flex; gap: 4px; }
+.rp-tools button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.rp-tools button:hover, .rp-tools button.on { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.rp-seg { display: inline-flex; border: 1px solid var(--soft); border-radius: 999px; overflow: hidden; }
+.rp-seg.wide { display: flex; }
+.rp-seg button { flex: 1; padding: 6px 14px; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.rp-seg button.on { background: #1d6ee6; color: #fff; }
+.rp-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
+.rp-cat-head { display: flex; align-items: center; gap: 8px; padding: 10px 4px 4px; cursor: pointer; font-size: 12px; letter-spacing: 0.5px; color: var(--muted); }
+.rp-cat-head i { width: 10px; height: 10px; border-radius: 50%; }
+.rp-cat-head b { color: #d1d7db; }
+.rp-cat-head em { margin-left: auto; font-style: normal; display: grid; }
+.rp-card { position: relative; display: flex; gap: 10px; align-items: flex-start; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--soft); border-radius: 12px; }
+.rp-card:hover { border-color: rgba(255, 255, 255, 0.25); }
+.rp-card.compact { align-items: center; padding: 7px 10px; }
+.rp-tile { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border-radius: 9px; background: rgba(255, 255, 255, 0.08); }
+.rp-tile.t-AUDIO { color: #a78bfa; background: rgba(167, 139, 250, 0.16); }
+.rp-tile.t-TEXT { color: #34d399; background: rgba(52, 211, 153, 0.16); }
+.rp-tile.t-IMAGE { color: #60a5fa; background: rgba(96, 165, 250, 0.16); }
+.rp-tile.t-VIDEO { color: #fb923c; background: rgba(251, 146, 60, 0.16); }
+.rp-tile.t-DOCUMENT { color: #cbd5e1; background: rgba(203, 213, 225, 0.14); }
+.rp-tile.t-CONTACT { color: #2dd4bf; background: rgba(45, 212, 191, 0.16); }
+.rp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.rp-name { font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-card.compact .rp-name { flex: 1; min-width: 0; }
+.rp-name code { font-weight: 400; }
+.rp-preview { font-size: 12px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rp-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--faint); }
+.rp-meta em, .rp-card.compact em { font-style: normal; margin-left: auto; font-size: 11px; color: var(--faint); }
+.rp-cat { padding: 1px 9px; border-radius: 999px; font-weight: 600; color: hsl(var(--h) 70% 72%); background: hsl(var(--h) 35% 20%); border: 1px solid hsl(var(--h) 40% 32%); }
+.rp-star { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: transparent; color: var(--faint); cursor: pointer; }
+.rp-star.on { color: var(--gold); }
+.rp-star.on svg { fill: var(--gold); }
+.rp-actions { position: absolute; right: 38px; top: 6px; display: none; gap: 2px; padding: 3px; background: #0c2150; border: 1px solid var(--soft); border-radius: 9px; }
+.rp-card.compact .rp-actions { top: 50%; transform: translateY(-50%); right: 74px; }
+.rp-card:hover .rp-actions { display: flex; }
+.rp-actions button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #d1d7db; cursor: pointer; }
+.rp-actions button:hover { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.rp-actions button[data-rp-act="del"]:hover { color: #ff7a8a; }
+.rp-form label.rp-l { font-size: 12px; font-weight: 600; color: var(--text); margin-top: 4px; }
+.rp-form label.rp-l span { font-weight: 400; color: var(--faint); }
+.rp-form label.rp-l b { color: var(--accent-text); }
+.rp-vars { display: flex; flex-wrap: wrap; gap: 6px; }
+.rp-vars button { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--soft); background: rgba(255, 255, 255, 0.07); color: #d1d7db; font-size: 11px; cursor: pointer; }
+.rp-vars button:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* ═══ "Salvar como resposta rápida" ao passar o mouse numa mensagem sua ═══ */
+#vcrm-msgbtn { position: fixed; z-index: 2147482990; display: none; place-items: center; width: 28px; height: 28px; padding: 0; cursor: pointer; border: 0; border-radius: 50%; background: rgba(32, 44, 51, 0.95); color: #5aa9ff; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+#vcrm-msgbtn:hover { background: #2a3942; color: #8cc4ff; }
+#vcrm-msgmenu { position: fixed; z-index: 2147482991; min-width: 270px; padding: 8px; background: #1f2427; color: #e9edef; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55); font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-msgmenu small { display: block; padding: 4px 8px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: #8696a0; }
+#vcrm-msgmenu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, 0.05); color: #e9edef; font-size: 14px; text-align: left; cursor: pointer; }
+#vcrm-msgmenu button:hover { background: rgba(255, 255, 255, 0.1); }
+#vcrm-msgmenu button svg { color: #34d399; }
+#vcrm-msgmenu button span { flex: 1; }
+#vcrm-msgmenu button em { font-style: normal; font-size: 12px; color: #8696a0; }
+
+/* ═══ Origem do anúncio ═══ */
+.vc-card.ad { gap: 6px; }
+.vc-ad-banner { margin: 0; font-size: 13px; color: var(--accent-text); }
+.vc-ad-row { display: flex; gap: 8px; justify-content: space-between; font-size: 12px; padding: 3px 0; border-top: 1px solid var(--soft); }
+.vc-ad-row span { color: var(--muted); flex: none; }
+.vc-ad-row b { color: #fff; font-weight: 600; text-align: right; word-break: break-all; }
+.vc-tiny { font-size: 11px !important; color: var(--faint) !important; margin-top: 8px; align-self: flex-start; }
