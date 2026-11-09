@@ -1,6 +1,9 @@
+import type { Contact } from "@prisma/client"
+import { sumMoney } from "@/lib/money"
 import { prisma } from "@/lib/prisma"
 import { withCountryCode } from "@/lib/phone"
 import { normalizePhone } from "@/lib/crm-auth"
+import { dayKey } from "@/lib/dates"
 
 export type CrmListTag = { id: string; name: string; color: string }
 
@@ -17,6 +20,16 @@ export type CrmContact = {
   contactId: string | null
   name: string | null
   phone: string | null
+  email?: string | null
+  source?: string | null
+  birthDate?: string | null
+  lifecycleStage?: string | null
+  leadStatus?: string | null
+  dealTitle?: string | null
+  dealValue?: number | null
+  dealStage?: string | null
+  nextStep?: string | null
+  nextStepAt?: string | null
   lists: CrmListTag[]
   stats: {
     count: number
@@ -29,6 +42,8 @@ export type CrmContact = {
     tierLabel: string
     cadenceLabel: string | null
   }
+  purchasePage: number
+  purchaseHasMore: boolean
   purchases: CrmPurchase[]
 }
 
@@ -56,14 +71,15 @@ function cadenceLabel(avg: number | null): string | null {
   return `Compra a cada ~${Math.round(avg)} dias`
 }
 
-export async function buildContact(userId: string, contactId: string): Promise<CrmContact> {
-  const contact = await prisma.contact.findFirst({ where: { id: contactId, userId } })
+export async function buildContact(userId: string, contactId: string, purchasePage = 1, existingContact?: Contact): Promise<CrmContact> {
+  const contact = existingContact ?? await prisma.contact.findFirst({ where: { id: contactId, userId } })
   if (!contact) return emptyContact()
 
-  const purchases = await prisma.purchase.findMany({
-    where: { userId, contactId },
-    orderBy: { purchasedAt: "desc" },
-  })
+  purchasePage = Math.max(1, Math.min(100_000, Math.floor(purchasePage) || 1))
+  const [purchases, summary] = await Promise.all([
+    prisma.purchase.findMany({ where: { userId, contactId }, orderBy: [{ purchasedAt: "desc" }, { id: "desc" }], skip: (purchasePage - 1) * 50, take: 50 }),
+    prisma.purchase.aggregate({ where: { userId, contactId }, _count: { _all: true }, _sum: { amount: true }, _min: { purchasedAt: true }, _max: { purchasedAt: true } }),
+  ])
 
   const memberships = await prisma.crmListMember.findMany({
     where: { contactId, list: { userId } },
@@ -76,17 +92,12 @@ export async function buildContact(userId: string, contactId: string): Promise<C
     color: m.list.color,
   }))
 
-  const count = purchases.length
-  const totalSpent = purchases.reduce((s, p) => s + p.amount, 0)
-  const sortedAsc = [...purchases].sort((a, b) => a.purchasedAt.getTime() - b.purchasedAt.getTime())
-  const first = sortedAsc[0]?.purchasedAt ?? null
-  const last = sortedAsc[sortedAsc.length - 1]?.purchasedAt ?? null
-  const daysSinceLast = last != null ? Math.floor((Date.now() - last.getTime()) / 86_400_000) : null
-
-  let avgIntervalDays: number | null = null
-  if (sortedAsc.length >= 2 && first && last) {
-    avgIntervalDays = (last.getTime() - first.getTime()) / 86_400_000 / (sortedAsc.length - 1)
-  }
+  const count = summary._count._all
+  const totalSpent = sumMoney([summary._sum.amount ?? 0])
+  const first = summary._min.purchasedAt
+  const last = summary._max.purchasedAt
+  const daysSinceLast = last ? Math.floor((Date.now() - last.getTime()) / 86_400_000) : null
+  const avgIntervalDays = count >= 2 && first && last ? (last.getTime() - first.getTime()) / 86_400_000 / (count - 1) : null
 
   const { tier, label } = tierFor(count)
 
@@ -95,6 +106,16 @@ export async function buildContact(userId: string, contactId: string): Promise<C
     contactId: contact.id,
     name: contact.name,
     phone: contact.phone,
+    email: contact.email,
+    source: contact.source,
+    birthDate: contact.birthDate ? dayKey(contact.birthDate) : null,
+    lifecycleStage: contact.lifecycleStage ?? (count > 0 ? "cliente" : "lead"),
+    leadStatus: contact.leadStatus ?? "novo",
+    dealTitle: contact.dealTitle ?? null,
+    dealValue: contact.dealValue ?? null,
+    dealStage: contact.dealStage ?? (contact.dealValue ? "aberto" : null),
+    nextStep: contact.nextStep ?? null,
+    nextStepAt: contact.nextStepAt?.toISOString() ?? null,
     lists,
     stats: {
       count,
@@ -107,6 +128,8 @@ export async function buildContact(userId: string, contactId: string): Promise<C
       tierLabel: label,
       cadenceLabel: cadenceLabel(avgIntervalDays),
     },
+    purchasePage,
+    purchaseHasMore: purchasePage * 50 < count,
     purchases: purchases.map((p) => ({
       id: p.id,
       amount: p.amount,
@@ -135,6 +158,7 @@ export function emptyContact(name: string | null = null, phone: string | null = 
       tierLabel: "Novo contato",
       cadenceLabel: null,
     },
+    purchasePage: 1, purchaseHasMore: false,
     purchases: [],
   }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getAuthUser } from "@/lib/crm-auth"
+import { settleCharge, InvalidChargeError } from "@/lib/settle-charge"
 import { sendPurchaseEvent } from "@/lib/meta"
 
 const schema = z.object({ action: z.enum(["pay", "cancel"]) })
@@ -35,33 +36,12 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ ok: true })
   }
 
-  // pay: "reserva" a cobrança (PENDING -> PAID) e cria a compra, tudo na mesma transação.
-  const now = new Date()
-  const purchase = await prisma.$transaction(async (tx) => {
-    const claimed = await tx.charge.updateMany({
-      where: { id, userId: user.id, status: "PENDING" },
-      data: { status: "PAID", paidAt: now },
-    })
-    if (claimed.count === 0) return null
-
-    const c = await tx.charge.findUniqueOrThrow({ where: { id } })
-    const p = await tx.purchase.create({
-      data: {
-        userId: user.id,
-        contactId: c.contactId,
-        amount: c.amount,
-        amountMinor: Math.round(c.amount * 100),
-        currency: "BRL",
-        requestKey: `charge:${c.id}`,
-        productName: c.description,
-        source: "cobranca",
-        purchasedAt: now,
-      },
-    })
-    await tx.charge.update({ where: { id }, data: { purchaseId: p.id } })
-    await tx.contact.update({ where: { id: c.contactId }, data: { lastActivityAt: now } })
-    return p
-  })
+  let purchase
+  try { purchase = await settleCharge(user.id, id) }
+  catch (error) {
+    if (error instanceof InvalidChargeError) return NextResponse.json({ error: error.message }, { status: 409 })
+    throw error
+  }
 
   if (!purchase) {
     return NextResponse.json({ error: "Esta cobrança já foi paga ou cancelada." }, { status: 409 })

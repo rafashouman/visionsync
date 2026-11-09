@@ -1,12 +1,28 @@
 # Documento 2 — Definição de Produto, MVP e Roadmap
 
-Versão de revisão: 1.2 · 9 de novembro de 2026.
+Versão de revisão: 1.3 · 9 de novembro de 2026.
 
 Uma primeira entrega de frontend, plugin e adaptação ao MongoDB já foi implementada. O inventário abaixo registra a base original, e o roadmap continua sendo escopo de destino. Consulte [estado da implementação](03-estado-da-implementacao.md) para evidências e pendências; o MVP completo ainda não foi concluído.
 
-Stack de destino definida pelo usuário: **Next.js + MongoDB, com preferência por TypeScript**. JavaScript pode ser usado quando for melhor para um caso concreto; outras tecnologias só quando realmente necessárias, com justificativa. PostgreSQL/Prisma permanecem apenas como descrição da origem a migrar.
+Stack de destino definida pelo usuário: **Next.js + MongoDB, com preferência por TypeScript**. JavaScript pode ser usado quando for melhor para um caso concreto; outras tecnologias só quando realmente necessárias, com justificativa. PostgreSQL/Prisma 7 descrevem a origem. O código atual já usa MongoDB com Prisma 6.19; a troca para driver oficial e a migração de dados reais continuam pendentes.
 
 Documento complementar a [Arquitetura e Diretrizes](01-arquitetura-e-diretrizes.md). Escopo: evolução do protótipo Vision CRM em `C:\@sites\visionsync`, referido como NexuSync nos documentos de origem. Nome comercial permanece pendente; não renomear repositório ou produto durante implementação sem decisão explícita.
+
+## Entrega incremental 1.3 — 09/11/2026
+
+Melhorias autorizadas implementadas sobre o CRM existente, preservando alterações locais anteriores e a identidade visual. Não é conclusão das fases de Deals, atribuição, outbox ou ERP.
+
+| Item | Estado nesta revisão | Evidência / próximo passo |
+|---|---|---|
+| Paginação e totais (T16 / AC-23) | Entregue no funil de etiquetas e cobranças atuais | Regressões acima de 2.000 contatos/500 cobranças; filtro no banco, 100 cards por coluna e resumo global; ampliar para futuros Deals |
+| Acessibilidade (parte de AC-21) | Entregues diálogo, rótulos, abas, foco e movimentação sem arraste | Não valida criar/qualificar/fechar Deals ainda inexistentes; auditoria completa permanece futura |
+| Contatos e histórico | Entregues cursor de contatos, continuidade e compras em páginas | Totais de compras independentes da página; timeline informa limites das atividades |
+| App Router e desempenho | Dados iniciais de contatos/funil no servidor; loading/error; ficha sob demanda | Medição de Core Web Vitals e teste de carga de produção pendentes |
+| Inicialização local (parte de T01) | Desenvolvimento separado da preparação do banco e da demonstração | `db:prepare` é explícito; `dev` não cria contas nem aplica schema |
+| Credenciais (parte de T03) | Limite atômico de login/cadastro no MongoDB e novos índices | Revisão completa de sessão/CSRF/escopos e homologação permanecem pendentes |
+| Dinheiro (parte de T05) | Validação de novas cobranças e soma de cobranças em centavos | Não houve migração integral de Float nem reconciliação de base real |
+
+Ordem recomendada após esta entrega: revisar base financeira e transações de cobrança; ensaiar migração/driver direto; modelar Deals; concluir privacidade/outbox; homologar destinos externos. As tarefas abaixo permanecem como especificação global, com execução parcial registrada aqui. Não recriar funcionalidades já entregues.
 
 ## 1. Problema e resultado esperado
 
@@ -20,13 +36,13 @@ O produto deve conseguir responder: quem é o cliente, qual oportunidade está a
 |---|---|---|
 | Atendimento | sidebar JS/MV3; leitura de conversa; contatos, notas, respostas, cobranças e lembretes | homologar WhatsApp real; proteção de identidade e contingência |
 | CRM | painel Next.js; contatos e listas/kanban | Deal/etapas/histórico sem perder etiquetas |
-| Persistência | PostgreSQL/Prisma no protótipo | MongoDB com driver oficial, validação, índices únicos e transações; migração sem perda |
+| Persistência | MongoDB/Prisma 6.19 no código atual; PostgreSQL é histórico | MongoDB com driver oficial, validação, índices únicos e transações; migração sem perda |
 | Financeiro | compras e baixa manual de cobrança | centavos/moeda, idempotência geral, estados e estornos |
 | Meta | Purchase/Recompra, pixels por lista, reenvio manual | catálogo de Lead/qualificação, outbox, destino fixo e privacidade |
 | Origem | origem manual e ctwaClid opcional | LP, referências, preferências e conciliação assistida |
 | ERP | não identificado no código | contrato canônico e um adaptador homologado |
 | Mobile | aplicação web; sem artefatos PWA identificados | fluxo responsivo e alternativa a arrastar; instalação PWA posterior |
-| Métricas | totais e recorrência básica; limites de leitura | agregação correta e cobertura; Ads/BI posterior |
+| Métricas | totais globais e páginas nas telas atuais; recorrência básica | manter cobertura nos futuros Deals; carga real e Ads/BI posteriores |
 
 O README relata simulações e falta de teste no WhatsApp/Meta reais; não há evidência nesta revisão de homologação de produção. Não repetir funcionalidades já implementadas como tarefas de criação; tarefas abaixo especificam estabilização, mudança ou expansão.
 
@@ -158,13 +174,13 @@ Prioridades: P0 bloqueia piloto confiável; P1 compõe o MVP; P2 evolução. Esf
 | T13 P1 | Painel de entregas com filtro/retry seguro e situação independente da venda | T09/12 | pendente/bloqueado/suprimido/expirado visíveis; sem dados secretos | M |
 | T14 P1 | Adaptador ERP com upsert/consulta; ExternalMapping e inbox assinada | T02/06/09 | AC-18/19; pedido no sandbox e timeout reconciliado | L |
 | T15 P0 | Isolar adaptador WA, validar mensagens da ponte e background; tratar troca de chat/LID; reduzir permissões | T03 | AC-13/22/24 no WhatsApp real autorizado; caminho manual operacional | L |
-| T16 P1 | Paginação e agregações globais no funil/cobranças; estados de sincronização | T07/08 | AC-23 com massa acima dos limites existentes | M |
+| T16 P1 | Entregue 1.3: paginação e totais globais no funil de etiquetas/cobranças; ampliar depois para Deals e sincronização | T07/08 para a ampliação | AC-23 testado com massa acima dos limites; carga real e novo pipeline pendentes | M |
 | T17 P0 | Privacidade: finalidades, retenção, revogação, atendimento de direitos e saneamento de diagnóstico | T02/03/10 | política configurada e cenários AC-09/10/24; dados sensíveis bloqueados no adaptador | M |
 | T18 P0 | Ensaiar backup/restauração/migração e rollback; homologar fluxo integrado | T03–17 | relatório por AC, falhas conhecidas e responsáveis; sem pendência crítica | L |
 | T19 P2 | BI por coortes e leitura Ads; distinguir ROAS, receita, margem e cobertura | MVP estável | reconciliação de amostras e definições da seção 6 | L |
 | T20 P2 | PWA instalável e estratégia de atualização/cache; avaliar equipe/canal oficial | decisão após piloto | critérios próprios; nenhum cache indevido de dados pessoais | L |
 
-Caminho crítico inicial: T01/T02 → T21 → T04/T05/T06 → T07/T09 → T10/T11/T12 → T14/T18. T18 também depende de T21. Segurança, extensão e privacidade acompanham as fases e podem bloquear liberação. A ordem não autoriza iniciar desenvolvimento nesta revisão.
+Caminho crítico inicial: T01/T02 → T21 → T04/T05/T06 → T07/T09 → T10/T11/T12 → T14/T18. T18 também depende de T21. Segurança, extensão e privacidade acompanham as fases e podem bloquear liberação. Esta sequência não amplia a implementação autorizada de melhorias locais para novas integrações externas.
 
 ## 9. Plano de validação e liberação
 
@@ -185,3 +201,7 @@ Definition of Done: critérios aplicáveis passam; documentação reflete compor
 - Quem é controlador, quais dados são sensíveis na operação e qual política de retenção será adotada?
 
 Enquanto faltarem essas respostas, os contratos propostos permitem preparar a implementação interna, mas não concluir integrações reais nem assumir comportamentos do ERP. Nenhum conteúdo foi salvo no Notion; nenhuma rotina ou memória foi criada.
+
+### Compatibilidade financeira da revisão 1.3
+
+Novas cobranças passam a gravar `amountMinor` (centavos inteiros) e `currency=BRL`. Na baixa, a compra usa esses mesmos centavos/moeda. A leitura e os resumos preferem centavos; registros legados sem esse campo continuam lidos por `amount`, preservado para compatibilidade. Nenhum histórico foi reescrito. Campos novos são aditivos; gerar o cliente faz parte do build. Backfill com reconciliação do legado e remoção futura de Float permanecem separados desta entrega, assim como estornos e demais estados financeiros do roadmap.

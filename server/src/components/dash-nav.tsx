@@ -15,7 +15,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "SEU DIA",
     items: [
       { label: "Pendências", icon: Bell, href: "/dashboard/pendencias" },
-      { label: "Agenda", icon: Calendar },
+      { label: "Agenda", icon: Calendar, href: "/dashboard/agenda" },
       { label: "Painel do dia", icon: ChartColumn, href: "/dashboard/painel" },
     ],
   },
@@ -31,7 +31,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     title: "MENSAGENS",
     items: [
       { label: "Respostas rápidas", icon: Zap, href: "/dashboard/respostas" },
-      { label: "Mensagens automáticas", icon: Bot },
+      { label: "Mensagens automáticas", icon: Bot, href: "/dashboard/automacoes" },
     ],
   },
   {
@@ -64,6 +64,7 @@ export function DashNav() {
         <span>Vision <b>CRM</b></span>
       </Link>
 
+      <nav aria-label="Navegação principal" style={{ display: "contents" }}>
       {GROUPS.map((g) => (
         <div key={g.title} style={{ display: "contents" }}>
           <div className="v-grp">{g.title}</div>
@@ -89,6 +90,7 @@ export function DashNav() {
         </div>
       ))}
 
+      </nav>
       <div className="v-me">
         <span className="v-av">{initials(name)}</span>
         <div className="who">

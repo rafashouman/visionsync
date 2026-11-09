@@ -15,7 +15,7 @@ type Pixel = {
   isDefault: boolean
 }
 type ListRow = { id: string; name: string; color: string; metaPixelId: string | null }
-type Config = { graphVersion: string; pixels: Pixel[]; lists: ListRow[] }
+type Config = { graphVersion: string; sendEnabled: boolean; pixels: Pixel[]; lists: ListRow[] }
 
 type MetaEvent = {
   id: string
@@ -75,7 +75,8 @@ export function MetaCard() {
   }, [])
 
   useEffect(() => {
-    load()
+    const task = setTimeout(() => void load(), 0)
+    return () => clearTimeout(task)
   }, [load])
 
   async function removePixel(p: Pixel) {
@@ -127,9 +128,10 @@ export function MetaCard() {
     <div style={{ ...card, padding: 24 }}>
       <h2 style={{ fontSize: 17, margin: "0 0 4px", color: "var(--strong)" }}>Conversões pro Meta</h2>
       <p style={hint}>
-        Cada compra registrada vira um evento <b>Purchase</b> com valor, data e o telefone da cliente criptografado.
+        Quando o envio estiver habilitado, compras podem gerar eventos com valor, data e o telefone da cliente em hash.
         A compra vai pro pixel da <b>lista</b> da cliente. O Meta só aceita eventos de até <b>7 dias</b>.
       </p>
+      {cfg && !cfg.sendEnabled && <p role="status" style={hint}>O envio ao Meta está desativado neste ambiente. Compras continuam sendo registradas no CRM.</p>}
 
       <h3 style={sec}>PIXELS</h3>
       {pixels.length === 0 && <p style={{ ...hint, fontStyle: "italic" }}>Nenhum pixel cadastrado. Sem pixel, nada é enviado ao Meta.</p>}
@@ -182,7 +184,7 @@ export function MetaCard() {
       ))}
 
       <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
-        <button onClick={sendPending} disabled={sending} style={ghost}>
+        <button onClick={sendPending} disabled={sending || !cfg?.sendEnabled} style={ghost}>
           <Send size={14} style={{ verticalAlign: -2, marginRight: 5 }} />{sending ? "Enviando..." : "Reenviar pendentes"}
         </button>
         <button onClick={showPreview} style={ghost}>Ver o que seria enviado</button>

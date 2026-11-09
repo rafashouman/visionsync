@@ -70,7 +70,8 @@ export function QuickRepliesBoard() {
   }, [])
 
   useEffect(() => {
-    load()
+    const task = setTimeout(() => void load(), 0)
+    return () => clearTimeout(task)
   }, [load])
 
   const categories = useMemo(
@@ -218,6 +219,12 @@ export function QuickRepliesBoard() {
                         </button>
                       </div>
                       {i.type === "TEXT" && i.text && <p style={preview}>{i.text}</p>}
+                      {i.type === "SEQUENCE" && i.text && (
+                        <p style={preview}>
+                          Sequência com {parseSeq(i.text).length} {parseSeq(i.text).length === 1 ? "passo" : "passos"}:{" "}
+                          {parseSeq(i.text).map((s, idx) => `(${idx + 1}) ${s.text.slice(0, 45)}`).join(" → ")}
+                        </p>
+                      )}
                       {isMediaKind(i.type) && i.text && <p style={preview}>{i.text}</p>}
                       {isMediaKind(i.type) && <MediaLine item={i} kind={i.type} />}
                       {i.type === "CONTACT" && (
@@ -253,6 +260,26 @@ export function QuickRepliesBoard() {
 
 /* ───────────── Janela de criar / editar ───────────── */
 
+type SeqStep = { text: string; delaySec: number }
+
+function parseSeq(raw: string | null | undefined): SeqStep[] {
+  if (!raw) return [{ text: "", delaySec: 2 }, { text: "", delaySec: 3 }]
+  const t = raw.trim()
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t)
+      if (Array.isArray(arr) && arr.length) {
+        return arr.map((s) => ({
+          text: String(s?.text ?? ""),
+          delaySec: Math.max(0, Math.min(60, Number(s?.delaySec ?? 2) || 0)),
+        }))
+      }
+    } catch {}
+  }
+  const parts = t.split(/\n---\n/).map((p) => p.trim()).filter(Boolean)
+  return parts.length ? parts.map((p) => ({ text: p, delaySec: 2 })) : [{ text: t, delaySec: 2 }]
+}
+
 function EditorModal({
   editor, categories, onClose, onSaved,
 }: {
@@ -267,6 +294,7 @@ function EditorModal({
   const [category, setCategory] = useState(editing?.category ?? "")
   const [shortcut, setShortcut] = useState(editing?.shortcut ?? "")
   const [text, setText] = useState(editing?.text ?? "")
+  const [seqSteps, setSeqSteps] = useState<SeqStep[]>(() => parseSeq(editing?.type === "SEQUENCE" ? editing.text : null))
   const [contactName, setContactName] = useState(editing?.contactName ?? "")
   const [contactPhone, setContactPhone] = useState(editing?.contactPhone ?? "")
   const [moreOpen, setMoreOpen] = useState(Boolean(editing?.shortcut))
@@ -290,6 +318,7 @@ function EditorModal({
   const missing =
     (name.trim() ? 0 : 1) +
     (kind === "TEXT" ? (text.trim() ? 0 : 1) : 0) +
+    (kind === "SEQUENCE" ? (seqSteps.some((s) => s.text.trim()) ? 0 : 1) : 0) +
     (media && !editing && !file ? 1 : 0) + // ao criar, o arquivo é obrigatório
     (kind === "CONTACT" ? (contactName.trim() ? 0 : 1) + (contactPhone.trim() ? 0 : 1) : 0)
 
@@ -349,7 +378,12 @@ function EditorModal({
           await callForm("POST", "/api/crm/quick-replies/upload", fd)
         }
       } else {
-        const typeFields = kind === "TEXT" ? { text } : { contactName, contactPhone }
+        const typeFields =
+          kind === "TEXT"
+            ? { text }
+            : kind === "SEQUENCE"
+              ? { text: JSON.stringify(seqSteps.filter((s) => s.text.trim())) }
+              : { contactName, contactPhone }
         if (editing) {
           await call("PATCH", `/api/crm/quick-replies/${editing.id}`, { ...common, ...typeFields })
         } else {
@@ -382,11 +416,11 @@ function EditorModal({
                 )
               })}
             </div>
-            <button disabled style={{ ...tile, width: "100%", marginTop: 10, flexDirection: "row", justifyContent: "flex-start", gap: 10, opacity: 0.45, cursor: "not-allowed" }}>
+            <button onClick={() => setKind("SEQUENCE")} style={{ ...tile, width: "100%", marginTop: 10, flexDirection: "row", justifyContent: "flex-start", gap: 10, cursor: "pointer" }}>
               <span style={{ color: "var(--vred)", display: "grid" }}><TypeIcon kind="SEQUENCE" size={20} /></span>
               <span style={{ textAlign: "left", color: "var(--text)" }}>
-                <b style={{ fontSize: 13 }}>Sequência de mensagens</b>
-                <br /><span style={{ fontSize: 11, color: "var(--muted)" }}>Várias respostas rápidas, uma depois da outra. Em breve.</span>
+                <b style={{ fontSize: 13 }}>Sequência de mensagens (Roteiro HotZapp)</b>
+                <br /><span style={{ fontSize: 11, color: "var(--muted)" }}>Várias mensagens enviadas automaticamente com intervalo em segundos entre elas.</span>
               </span>
             </button>
             <div style={{ textAlign: "center", marginTop: 16 }}>
@@ -449,6 +483,63 @@ function EditorModal({
                   </div>
                 )}
               </>
+            )}
+
+            {kind === "SEQUENCE" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                <label style={label}>Passos da sequência <span style={req}>*</span></label>
+                {seqSteps.map((st, idx) => (
+                  <div key={idx} style={{ ...inner, padding: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                      <strong style={{ fontSize: 12, color: "var(--accent-text)" }}>Passo {idx + 1}</strong>
+                      <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                        Aguardar antes:
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          value={st.delaySec}
+                          onChange={(e) => {
+                            const next = [...seqSteps]
+                            next[idx] = { ...next[idx], delaySec: Math.max(0, Math.min(60, Number(e.target.value) || 0)) }
+                            setSeqSteps(next)
+                          }}
+                          style={{ ...field, width: 64, padding: "4px 8px" }}
+                        />
+                        seg
+                      </label>
+                      {seqSteps.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setSeqSteps(seqSteps.filter((_, i) => i !== idx))}
+                          style={{ ...ghost, padding: "3px 8px", fontSize: 11, color: "var(--danger)" }}
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={st.text}
+                      onChange={(e) => {
+                        const next = [...seqSteps]
+                        next[idx] = { ...next[idx], text: e.target.value }
+                        setSeqSteps(next)
+                      }}
+                      rows={3}
+                      maxLength={1500}
+                      placeholder={`Mensagem do passo ${idx + 1} (aceita variáveis como {primeiro_nome}, {saudacao}…)`}
+                      style={{ ...field, resize: "vertical", fontFamily: "inherit" }}
+                    />
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSeqSteps([...seqSteps, { text: "", delaySec: 2 }])}
+                  style={{ ...ghost, alignSelf: "flex-start" }}
+                >
+                  + Adicionar passo na sequência
+                </button>
+              </div>
             )}
 
             {kind === "CONTACT" && (

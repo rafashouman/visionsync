@@ -18,10 +18,11 @@ export async function buildDay(userId: string) {
   const weekAgo = new Date(start.getTime() - 6 * DAY_MS)
   const waitFrom = new Date(now.getTime() - 72 * 3600_000)
 
-  const [todayAgg, weekAgg, newContacts, reminders, charges, metaPending, waiting] = await Promise.all([
+  const [todayAgg, weekAgg, newContacts, totalContacts, reminders, charges, metaPending, waiting] = await Promise.all([
     prisma.purchase.aggregate({ where: { userId, purchasedAt: { gte: start } }, _count: { _all: true }, _sum: { amount: true } }),
     prisma.purchase.aggregate({ where: { userId, purchasedAt: { gte: weekAgo } }, _count: { _all: true }, _sum: { amount: true } }),
     prisma.contact.count({ where: { userId, createdAt: { gte: start } } }),
+    prisma.contact.count({ where: { userId } }),
     listReminders(userId),
     listCharges(userId, "todas"),
     prisma.purchase.findMany({
@@ -52,6 +53,7 @@ export async function buildDay(userId: string) {
       semana: { count: weekAgg._count._all, total: weekAgg._sum.amount ?? 0 },
     },
     contatosNovos: newContacts,
+    totalContatos: totalContacts,
     lembretes: {
       atrasados: open.filter((r) => r.state === "atrasado").length,
       hoje: open.filter((r) => r.state === "hoje").length,

@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   let text: string | null = null
   let contactName: string | null = null
   let contactPhone: string | null = null
-  if (d.type === "TEXT") {
+  if (d.type === "TEXT" || d.type === "SEQUENCE") {
     const t = textField.safeParse(d.text)
     if (!t.success) return NextResponse.json({ error: firstIssue(t.error) }, { status: 400 })
     text = t.data

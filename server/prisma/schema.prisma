@@ -44,6 +44,11 @@ model Contact {
   // Dados do lead
   source    String?   // origem: "anuncio" | "organico" | "indicacao" | "outro"
   birthDate DateTime? // nascimento (guardado ao meio-dia de Brasília)
+  lifecycleStage String?   @default("lead") // "assinante" | "lead" | "mql" | "sql" | "oportunidade" | "cliente" | "evangelista"
+  leadStatus     String?   @default("novo") // "novo" | "em_atendimento" | "aguardando" | "qualificado" | "sem_interesse"
+  dealTitle      String?   // nome da oportunidade/negócio aberto (HubSpot Deal)
+  dealValue      Float?    // valor estimado do negócio aberto (R$)
+  dealStage      String?   // status do negócio: "aberto" | "ganho" | "perdido"
 
   // Funil
   nextStep       String?   // próximo passo ("ligar sexta", "mandar áudio")
@@ -187,6 +192,7 @@ model Reminder {
   userId      String
   contactId   String
   text        String
+  scheduledMessage String?   // mensagem pré-pronta para enviar no horário agendado (HotZapp)
   dueAt       DateTime
   doneAt      DateTime?
   snoozeCount Int       @default(0)
@@ -233,7 +239,9 @@ model Charge {
   id          String       @id @default(cuid()) @map("_id")
   userId      String
   contactId   String
-  amount      Float
+  amount      Float // compatibility for legacy clients
+  amountMinor Int? // canonical cents for new charges; null identifies legacy rows
+  currency    String @default("BRL")
   description String?
   dueDate     DateTime // dia do vencimento (guardado ao meio-dia de Brasília)
   status      ChargeStatus @default(PENDING)

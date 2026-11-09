@@ -3,6 +3,7 @@ import { z } from "zod"
 import { getAuthUser, normalizePhone } from "@/lib/crm-auth"
 import { prisma } from "@/lib/prisma"
 import { importFromWhatsApp } from "@/lib/import"
+import { withCountryCode } from "@/lib/phone"
 
 const schema = z.object({
   labels: z.array(z.object({ name: z.string().trim().min(1).max(60), color: z.string().max(20).optional() })).max(200),
@@ -33,16 +34,17 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(await importFromWhatsApp(user.id, parsed.data.labels, parsed.data.contacts, parsed.data.onlyNew ?? false))
 }
 
-// GET /api/crm/import -> os 8 últimos dígitos de todo telefone que já está no CRM.
-// A extensão usa isso pra mostrar, antes de importar, quantos são novos e quantos já existem.
+// GET /api/crm/import -> telefones para a prévia de contatos novos.
 export async function GET(req: NextRequest) {
   const user = await getAuthUser(req)
   if (!user) return NextResponse.json({ error: "Token inválido" }, { status: 401 })
   const rows = await prisma.contact.findMany({ where: { userId: user.id }, select: { phone: true } })
+  const phones = new Set(rows.map((r) => withCountryCode(normalizePhone(r.phone))).filter(Boolean))
+  // Mantido para versões antigas da extensão.
   const tails = new Set<string>()
   for (const r of rows) {
     const t = normalizePhone(r.phone).slice(-8)
     if (t.length === 8) tails.add(t)
   }
-  return NextResponse.json({ tails: [...tails] })
+  return NextResponse.json({ phones: [...phones], tails: [...tails] })
 }

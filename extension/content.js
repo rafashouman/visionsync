@@ -101,6 +101,11 @@ const ICONS = {
   paperclip: '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
   trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   spark: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+  eye: '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.45 10.45 0 0 1-1.449 2.59"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/>',
+  phone: '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+  calendar: '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  play: '<polygon points="6 3 20 12 6 21 6 3"/>',
 }
 const icon = (n, s = 18) =>
   `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n] || ""}</svg>`
@@ -148,6 +153,39 @@ function chargeMessage(c) {
   if (c.paymentLink && c.paymentLink.trim()) lines.push("", `Pra pagar: ${c.paymentLink.trim()}`)
   lines.push("", "Qualquer dúvida é só me chamar. Obrigada!")
   return lines.join("\n")
+}
+
+/** Converte o campo text de uma resposta SEQUENCE em lista de passos [{ text, delaySec }]. */
+function parseSequenceSteps(raw) {
+  if (!raw || typeof raw !== "string") return [{ text: "", delaySec: 2 }]
+  const t = raw.trim()
+  if (t.startsWith("[")) {
+    try {
+      const arr = JSON.parse(t)
+      if (Array.isArray(arr) && arr.length) {
+        return arr.map((s) => ({
+          text: String((s && s.text) || ""),
+          delaySec: Math.max(0, Math.min(60, Number((s && s.delaySec) ?? 2) || 0)),
+        }))
+      }
+    } catch {}
+  }
+  const parts = t.split(/\n---\n/).map((p) => p.trim()).filter(Boolean)
+  return parts.length ? parts.map((p) => ({ text: p, delaySec: 2 })) : [{ text: t, delaySec: 2 }]
+}
+
+/** Gera link para adicionar lembrete/agendamento no Google Agenda (1 clique, estilo HotZapp). */
+function googleCalendarUrl({ title, details, dueAt }) {
+  const start = new Date(dueAt || Date.now() + 3600e3)
+  const end = new Date(start.getTime() + 30 * 60e3)
+  const fmt = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title || "Retorno WhatsApp — Vision CRM",
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details: details || "",
+  })
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
 // ── WhatsApp Web: conversa ativa e campo de mensagem ──────────────────────────
@@ -318,6 +356,10 @@ function render() {
     <aside class="vc-rail">
       <div class="vc-logo" title="Vision CRM">${icon("spark", 20)}</div>
       ${rail}
+      <div class="vc-sep"></div>
+      <button class="vc-ico" data-act="kanban" title="Quadro Kanban no WhatsApp">${icon("columns", 19)}</button>
+      <button class="vc-ico" data-act="dial" title="Abrir conversa sem salvar número">${icon("phone", 19)}</button>
+      <button class="vc-ico ${prefs.blur ? "on" : ""}" data-act="blur" title="Modo Privacidade (borrar nomes e valores)">${icon(prefs.blur ? "eyeoff" : "eye", 19)}</button>
       <div class="vc-grow"></div>
       <button class="vc-ico" data-act="web" title="Abrir o painel web">${icon("ext", 19)}</button>
     </aside>
@@ -410,8 +452,15 @@ function renderConversa() {
   const ids = new Set(applied.map((l) => l.id))
   const chips = applied.map((l) => `<span class="vc-chip" style="--c:${esc(l.color)}">${esc(l.name)}<button data-remove-list="${esc(l.id)}" title="Tirar da lista">×</button></span>`).join("")
   const free = state.lists.filter((l) => !ids.has(l.id))
-  const d = state.detail && state.detail.contact
+  const d = (state.detail && state.detail.contact) || c
   const SOURCES = { anuncio: "Anúncio", organico: "Orgânico", indicacao: "Indicação", outro: "Outro" }
+  const LIFECYCLES = { assinante: "Assinante", lead: "Lead", mql: "MQL (Qualificado)", sql: "SQL (Oportunidade)", oportunidade: "Em Negociação", cliente: "Cliente", evangelista: "VIP / Promotor" }
+  const LEAD_STATUS = { novo: "Novo", em_atendimento: "Em atendimento", aguardando: "Aguardando retorno", qualificado: "Qualificado", sem_interesse: "Sem interesse" }
+  const DEAL_STAGES = { aberto: "Em negociação", ganho: "Ganho (Fechado)", perdido: "Perdido" }
+  const curLifecycle = (d && d.lifecycleStage) || (s.count > 0 ? "cliente" : "lead")
+  const curLeadStatus = (d && d.leadStatus) || "novo"
+  const curDealStage = (d && d.dealStage) || ((d && d.dealValue) ? "aberto" : "aberto")
+  const nextStepDay = d && d.nextStepAt ? String(d.nextStepAt).slice(0, 10) : ""
 
   return `${head}
     <div class="vc-tags">${chips || `<span class="vc-muted">Em nenhuma lista</span>`}</div>
@@ -425,6 +474,8 @@ function renderConversa() {
 
     <div class="vc-badges">
       <span class="vc-badge">${esc(s.tierLabel)}</span>
+      <span class="vc-badge">${esc(LIFECYCLES[curLifecycle] || "Lead")}</span>
+      <span class="vc-badge">${esc(LEAD_STATUS[curLeadStatus] || "Novo")}</span>
       ${s.cadenceLabel ? `<span class="vc-badge gold">${esc(s.cadenceLabel)}</span>` : ""}
       ${d && d.source ? `<span class="vc-badge">${esc(SOURCES[d.source] || d.source)}</span>` : ""}
     </div>
@@ -436,6 +487,42 @@ function renderConversa() {
     </div>
 
     ${purchaseForm()}
+
+    <form class="vc-card" data-form="lead-deal">
+      <div class="vc-sec first">Negócio &amp; Dados HubSpot</div>
+      <label class="rp-l">Oportunidade / Negócio</label>
+      <div class="vc-grid2">
+        <input name="dealTitle" placeholder="Ex.: Pacote Anual" maxlength="120" value="${esc((d && d.dealTitle) || "")}" />
+        <input name="dealValue" type="number" step="0.01" min="0" placeholder="Valor R$" value="${d && d.dealValue != null ? esc(d.dealValue) : ""}" />
+      </div>
+      <select name="dealStage" class="vc-select">
+        ${Object.entries(DEAL_STAGES).map(([k, lbl]) => `<option value="${k}" ${curDealStage === k ? "selected" : ""}>Status do negócio: ${lbl}</option>`).join("")}
+      </select>
+      <label class="rp-l">Próximo passo (Follow-up)</label>
+      <div class="vc-grid2">
+        <input name="nextStep" placeholder="Ex.: Enviar proposta" maxlength="200" value="${esc((d && d.nextStep) || "")}" />
+        <input name="nextStepAt" type="date" value="${esc(nextStepDay)}" />
+      </div>
+      <label class="rp-l">Qualificação (HubSpot)</label>
+      <div class="vc-grid2">
+        <select name="lifecycleStage" class="vc-select">
+          ${Object.entries(LIFECYCLES).map(([k, lbl]) => `<option value="${k}" ${curLifecycle === k ? "selected" : ""}>${lbl}</option>`).join("")}
+        </select>
+        <select name="leadStatus" class="vc-select">
+          ${Object.entries(LEAD_STATUS).map(([k, lbl]) => `<option value="${k}" ${curLeadStatus === k ? "selected" : ""}>${lbl}</option>`).join("")}
+        </select>
+      </div>
+      <div class="vc-grid2">
+        <select name="source" class="vc-select">
+          <option value="">Origem: Não informada</option>
+          ${Object.entries(SOURCES).map(([k, lbl]) => `<option value="${k}" ${(d && d.source) === k ? "selected" : ""}>Origem: ${lbl}</option>`).join("")}
+        </select>
+        <input name="birthDate" type="date" title="Data de nascimento" value="${esc((d && d.birthDate) || "")}" />
+      </div>
+      <input name="email" type="email" placeholder="E-mail da cliente (opcional)" value="${esc((d && d.email) || "")}" />
+      <button class="vc-btn">${icon("check", 15)} Salvar dados do lead</button>
+      <div class="vc-note" data-msg="lead-deal"></div>
+    </form>
 
     <div class="vc-sec">Histórico</div>
     ${c.purchases.length ? c.purchases.slice(0, 15).map((p) => `
@@ -473,7 +560,10 @@ function renderNotes() {
 
 const imp = { phase: "idle", scan: null, result: null, msg: "", done: 0, total: 0, withoutLabel: false, archived: true, onlyNew: true, known: new Set(), selected: new Set() }
 
-const tailOf = (phone) => String(phone || "").replace(/\D/g, "").slice(-8)
+const importPhone = (phone) => {
+  const digits = String(phone || "").replace(/\D/g, "").replace(/^0+/, "")
+  return digits.length === 10 || digits.length === 11 ? "55" + digits : digits
+}
 
 /** Conversas que vão entrar, já só com as etiquetas escolhidas (e, no modo "só novos", sem quem já está no CRM). */
 function importable() {
@@ -482,7 +572,7 @@ function importable() {
   const out = []
   for (const c of s.chats) {
     if (!imp.archived && c.archived) continue
-    if (imp.onlyNew && imp.known.has(tailOf(c.phone))) continue
+    if (imp.onlyNew && imp.known.has(importPhone(c.phone))) continue
     const mine = c.labels.filter((l) => imp.selected.has(l))
     if (mine.length) out.push({ ...c, labels: mine })
     else if (imp.withoutLabel) out.push({ ...c, labels: [] }) // sem etiqueta, ou só com etiquetas não escolhidas
@@ -512,7 +602,7 @@ function renderImport() {
     const counts = new Map()
     for (const c of s.chats) for (const l of c.labels) counts.set(l, (counts.get(l) || 0) + 1)
     const names = [...new Set([...s.labels.map((l) => l.name), ...counts.keys()])]
-    const already = s.chats.filter((c) => imp.known.has(tailOf(c.phone))).length
+    const already = s.chats.filter((c) => imp.known.has(importPhone(c.phone))).length
     return box(`<b style="color:#fff">Encontrei no seu WhatsApp</b>
       <p class="vc-muted">${s.labels.length} etiquetas · ${s.chats.length} conversas com telefone (${s.chats.length - already} novas, ${already} já estão no CRM)${s.semTelefone ? ` · ${s.semTelefone} sem telefone descoberto (não entram)` : ""}${s.grupos ? ` · ${s.grupos} grupos ignorados` : ""}.</p>
       <label class="vc-check"><input type="checkbox" data-imp-opt="onlyNew" ${imp.onlyNew ? "checked" : ""}/> <span>Só contatos novos (não mexe em quem já está no CRM)</span></label>
@@ -542,7 +632,12 @@ async function importScan() {
   }
   imp.scan = r
   const known = await api("GET", "/api/crm/import")
-  imp.known = new Set(known.ok && known.data && Array.isArray(known.data.tails) ? known.data.tails : [])
+  if (!known.ok || !known.data || !Array.isArray(known.data.phones)) {
+    imp.phase = "idle"
+    imp.msg = "Não consegui verificar os contatos do CRM. Atualize o servidor e tente novamente."
+    return render()
+  }
+  imp.known = new Set(known.data.phones)
   imp.selected = new Set([...r.labels.map((l) => l.name), ...r.chats.flatMap((c) => c.labels)]) // começa com todas marcadas
   imp.phase = r.chats.length ? "ready" : "idle"
   if (!r.chats.length) imp.msg = "Não achei conversas pra importar. Clique em \"Copiar diagnóstico da leitura\" e me mande."
@@ -588,19 +683,26 @@ function renderReminders() {
   const mine = state.reminders
   return `
     <form class="vc-card" data-form="reminder">
-      <div class="vc-sec first">Novo lembrete</div>
+      <div class="vc-sec first">Novo lembrete / Agendar mensagem</div>
       <input name="text" maxlength="300" placeholder="O que lembrar? Ex.: cobrar o pacote" required />
+      <textarea name="scheduledMessage" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional — usa variáveis como {primeiro_nome})"></textarea>
       <input name="at" type="datetime-local" value="${tomorrow9()}" required />
-      <button class="vc-btn">${icon("plus", 15)} Criar lembrete</button>
+      <div class="vc-actions">
+        <button class="vc-btn">${icon("plus", 15)} Agendar</button>
+        <button type="button" class="vc-ghost" data-act="gcal-form" title="Abrir no Google Agenda">${icon("calendar", 14)} + Google Agenda</button>
+      </div>
       <div class="vc-note" data-msg="reminder"></div>
     </form>
     ${mine.length ? mine.map((r) => `
       <div class="vc-card charge ${r.state === "atrasado" ? "vencida" : ""}">
         <div class="vc-row flat"><div><b>${esc(r.text)}</b><span>${whenFmt(r.dueAt)}${r.snoozeCount ? " · adiado " + r.snoozeCount + "×" : ""}</span></div><span class="vc-badge ${r.state === "atrasado" ? "vencida" : r.state === "hoje" ? "pendente" : "cancelada"}">${r.state === "atrasado" ? "Atrasado" : r.state === "hoje" ? "Hoje" : "Próximo"}</span></div>
+        ${r.scheduledMessage ? `<div class="vc-sched-msg"><small>Mensagem agendada:</small><p>${esc(r.scheduledMessage)}</p></div>` : ""}
         <div class="vc-actions">
+          ${r.scheduledMessage ? `<button class="vc-btn sm" data-rem-send="${esc(r.id)}">${icon("send", 13)} Enviar agora</button>` : ""}
           <button class="vc-btn sm" data-rem-done="${esc(r.id)}">Feito</button>
-          <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:1h">+1 hora</button>
+          <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:1h">+1h</button>
           <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:amanha">Amanhã</button>
+          <button class="vc-ghost" data-gcal-rem="${esc(r.id)}" title="Adicionar ao Google Agenda">${icon("calendar", 13)}</button>
         </div>
       </div>`).join("") : `<p class="vc-muted">Nenhum lembrete aberto para esta cliente.</p>`}
   `
@@ -658,7 +760,8 @@ async function loadReplies() {
 function openReplyForm(init) {
   state.open = true
   state.tab = "respostas"
-  rp.form = { mode: "new", type: "TEXT", id: null, name: "", category: "", shortcut: "", text: "", contactName: "", contactPhone: "", ...init }
+  const baseSteps = init && init.type === "SEQUENCE" ? parseSequenceSteps(init.text) : [{ text: (init && init.text) || "", delaySec: 2 }, { text: "", delaySec: 3 }]
+  rp.form = { mode: "new", type: "TEXT", id: null, name: "", category: "", shortcut: "", text: "", contactName: "", contactPhone: "", steps: baseSteps, ...init }
   rp.msg = ""
   render()
 }
@@ -669,6 +772,13 @@ function syncReplyForm() {
   if (!form || !rp.form) return
   const fd = new FormData(form)
   for (const k of ["name", "category", "shortcut", "text", "contactName", "contactPhone"]) if (fd.has(k)) rp.form[k] = String(fd.get(k))
+  if (rp.form.type === "SEQUENCE") {
+    const texts = [...form.querySelectorAll("[data-seq-text]")].map((el) => el.value)
+    const delays = [...form.querySelectorAll("[data-seq-delay]")].map((el) => Math.max(0, Math.min(60, parseInt(el.value, 10) || 0)))
+    if (texts.length) {
+      rp.form.steps = texts.map((t, i) => ({ text: t, delaySec: delays[i] ?? 2 }))
+    }
+  }
 }
 
 function rpCard(r) {
@@ -683,7 +793,10 @@ function rpCard(r) {
   if (compact) {
     return `<div class="rp-card compact">${tile}<b class="rp-name">${esc(r.name)}</b>${acts}<em>${r.usageCount}×</em>${star}</div>`
   }
-  const preview = r.type === "TEXT" ? esc((r.text || "").slice(0, 120)) : ""
+  const preview =
+    r.type === "TEXT" ? esc((r.text || "").slice(0, 120))
+    : r.type === "SEQUENCE" ? esc(`Sequência com ${parseSequenceSteps(r.text).length} passos`)
+    : ""
   return `<div class="rp-card">${tile}
     <div class="rp-main"><b class="rp-name">${esc(r.name)}${r.shortcut ? ` <code>;${esc(r.shortcut)}</code>` : ""}</b>
       ${preview ? `<div class="rp-preview">${preview}</div>` : ""}
@@ -724,9 +837,15 @@ function renderReplyForm() {
   const f = rp.form
   const isEdit = f.mode === "edit"
   const cats = [...new Set(state.replies.map((r) => r.category).filter(Boolean))]
+  const steps = Array.isArray(f.steps) && f.steps.length ? f.steps : parseSequenceSteps(f.text)
+  const typeLabel = f.type === "CONTACT" ? "cartão de contato" : f.type === "SEQUENCE" ? "sequência de mensagens" : "mensagem de texto"
   return `<form class="vc-card rp-form" data-form="rpform">
-    <div class="vc-sec first">${isEdit ? "Editar" : "Nova"} ${f.type === "CONTACT" ? "cartão de contato" : "mensagem de texto"}</div>
-    ${isEdit ? "" : `<div class="rp-seg wide"><button type="button" data-rp-act="type-TEXT" class="${f.type === "TEXT" ? "on" : ""}">Texto</button><button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button></div>
+    <div class="vc-sec first">${isEdit ? "Editar" : "Nova"} ${typeLabel}</div>
+    ${isEdit ? "" : `<div class="rp-seg wide">
+        <button type="button" data-rp-act="type-TEXT" class="${f.type === "TEXT" ? "on" : ""}">Texto</button>
+        <button type="button" data-rp-act="type-SEQUENCE" class="${f.type === "SEQUENCE" ? "on" : ""}">Sequência</button>
+        <button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button>
+      </div>
       <p class="vc-hint">Áudio, imagem, vídeo e documento: crie pelo painel web (é preciso enviar o arquivo).</p>`}
     <label class="rp-l">Nome <b>*</b></label>
     <input name="name" maxlength="80" placeholder="Como você vai achar essa mensagem depois" value="${esc(f.name)}" required />
@@ -738,6 +857,19 @@ function renderReplyForm() {
       <textarea name="text" rows="6" maxlength="4096" placeholder="Digite sua mensagem aqui…" required>${esc(f.text)}</textarea>
       <div class="rp-vars">${VAR_CHIPS.map(([t, l]) => `<button type="button" data-rp-var="${esc(t)}">${esc(l)}</button>`).join("")}</div>
       <p class="vc-hint">Clique pra inserir. O cliente recebe tudo preenchido.</p>`
+    : f.type === "SEQUENCE" ? `
+      <label class="rp-l">Passos do roteiro / sequência <b>*</b></label>
+      ${steps.map((st, idx) => `
+        <div class="vc-seq-step">
+          <div class="vc-seq-head">
+            <b>Passo ${idx + 1}</b>
+            <label>Aguardar <input type="number" data-seq-delay="${idx}" min="0" max="60" value="${esc(st.delaySec ?? 2)}" /> seg</label>
+            ${steps.length > 1 ? `<button type="button" class="vc-link" data-rp-act="seq-del" data-rp-id="${idx}">Remover</button>` : ""}
+          </div>
+          <textarea data-seq-text="${idx}" rows="3" maxlength="1500" placeholder="Mensagem do passo ${idx + 1} (aceita {primeiro_nome}, {saudacao}…)" required>${esc(st.text)}</textarea>
+        </div>
+      `).join("")}
+      <button type="button" class="vc-ghost" data-rp-act="seq-add">${icon("plus", 14)} Adicionar passo na sequência</button>`
     : `
       <label class="rp-l">Nome do contato <b>*</b></label>
       <input name="contactName" maxlength="100" value="${esc(f.contactName)}" required />
@@ -765,6 +897,17 @@ async function onReplyAction(act, id, btn) {
     return render()
   }
   if (act.startsWith("type-")) { syncReplyForm(); rp.form.type = act.slice(5); return render() }
+  if (act === "seq-add") {
+    syncReplyForm()
+    rp.form.steps = [...(rp.form.steps || []), { text: "", delaySec: 2 }]
+    return render()
+  }
+  if (act === "seq-del") {
+    syncReplyForm()
+    const idx = parseInt(id, 10)
+    if (Array.isArray(rp.form.steps) && rp.form.steps.length > 1) rp.form.steps.splice(idx, 1)
+    return render()
+  }
   if (!r) return
   if (act === "send") return useReply(r)
   if (act === "fav") {
@@ -782,8 +925,8 @@ async function onReplyAction(act, id, btn) {
     return toast("Duplicada.")
   }
   if (act === "edit") {
-    if (r.type !== "TEXT" && r.type !== "CONTACT") return toast("Pra editar áudio, imagem, vídeo ou documento, use o painel web.")
-    return openReplyForm({ mode: "edit", id: r.id, type: r.type, name: r.name, category: r.category || "", shortcut: r.shortcut || "", text: r.text || "", contactName: r.contactName || "", contactPhone: r.contactPhone || "" })
+    if (r.type !== "TEXT" && r.type !== "CONTACT" && r.type !== "SEQUENCE") return toast("Pra editar áudio, imagem, vídeo ou documento, use o painel web.")
+    return openReplyForm({ mode: "edit", id: r.id, type: r.type, name: r.name, category: r.category || "", shortcut: r.shortcut || "", text: r.text || "", contactName: r.contactName || "", contactPhone: r.contactPhone || "", steps: r.type === "SEQUENCE" ? parseSequenceSteps(r.text) : undefined })
   }
   if (act === "del") {
     if (!confirm(`Excluir a resposta "${r.name}"?`)) return
@@ -800,6 +943,11 @@ async function submitReplyForm(form) {
   const f = rp.form
   const body = { name: f.name.trim(), category: f.category.trim() || null, shortcut: f.shortcut.trim() || null }
   if (f.type === "TEXT") body.text = f.text
+  else if (f.type === "SEQUENCE") {
+    const cleanSteps = (f.steps || []).map((s) => ({ text: String(s.text || "").trim(), delaySec: Math.max(0, Math.min(60, Number(s.delaySec) || 0)) })).filter((s) => s.text)
+    if (!cleanSteps.length) { rp.msg = "Escreva pelo menos 1 passo na sequência."; return render() }
+    body.text = JSON.stringify(cleanSteps)
+  }
   else { body.contactName = f.contactName; body.contactPhone = f.contactPhone }
   if (f.mode === "new") body.type = f.type
   rp.msg = "Salvando…"
@@ -818,12 +966,35 @@ async function submitReplyForm(form) {
 
 function replyPreview(r) {
   if (r.type === "TEXT") return (r.text || "").slice(0, 90)
+  if (r.type === "SEQUENCE") return `Sequência (${parseSequenceSteps(r.text).length} mensagens)`
   if (r.type === "CONTACT") return `Cartão de contato: ${r.contactName || ""}`
   return r.mediaName ? `Arquivo: ${r.mediaName}` : "Anexo"
 }
 
-/** Usa uma resposta: texto vai pro campo; anexos ainda são feitos pelo painel web. */
+/** Usa uma resposta: texto, contato, sequência com delay (HotZapp) ou anexos. */
 async function useReply(r) {
+  if (r.type === "SEQUENCE") {
+    const steps = parseSequenceSteps(r.text).filter((s) => s.text.trim())
+    if (!steps.length) return toast("Esta sequência está vazia.")
+    if (!getComposer()) return toast("Abra uma conversa pra disparar a sequência.")
+    api("POST", `/api/crm/quick-replies/${r.id}/use`)
+    for (let i = 0; i < steps.length; i++) {
+      const st = steps[i]
+      if (st.delaySec > 0) {
+        toast(`Sequência "${r.name}": passo ${i + 1}/${steps.length} em ${st.delaySec}s…`)
+        await new Promise((res) => setTimeout(res, st.delaySec * 1000))
+      } else {
+        toast(`Sequência "${r.name}": enviando passo ${i + 1}/${steps.length}…`)
+      }
+      const msg = renderVariables(st.text)
+      if (!insertIntoComposer(msg)) return
+      await new Promise((res) => setTimeout(res, 180))
+      await clickSend(2000)
+      await new Promise((res) => setTimeout(res, 350))
+    }
+    toast(`Sequência "${r.name}" enviada (${steps.length} mensagens)!`)
+    return
+  }
   if (r.type === "TEXT" || r.type === "CONTACT") {
     const text = r.type === "TEXT" ? renderVariables(r.text || "") : `${r.contactName || ""}: ${r.contactPhone || ""}`.trim()
     if (!insertIntoComposer(text)) return
@@ -1142,10 +1313,15 @@ function renderHdrPop() {
 
   let html = ""
   if (hdrPop === "sched") {
-    html = `<b>Agendar conversa</b>
+    html = `<b>Agendar conversa / mensagem</b>
       <input id="vh-text" maxlength="300" placeholder="Lembrete (opcional). Ex.: cobrar o pacote" />
+      <textarea id="vh-msg" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional)…"></textarea>
       <div class="vh-chips">${schedPresets().map(([l, d]) => `<button data-sched="${d.toISOString()}">${esc(l)}</button>`).join("")}</div>
-      <form data-hform="sched"><input id="vh-at" type="datetime-local" required /><button class="vc-btn sm">Agendar</button></form>`
+      <form data-hform="sched">
+        <input id="vh-at" type="datetime-local" value="${tomorrow9()}" required />
+        <button class="vc-btn sm">Agendar</button>
+        <button type="button" class="vc-ghost" data-fact="gcal-sched" title="Adicionar ao Google Agenda">${icon("calendar", 14)}</button>
+      </form>`
   } else {
     const cur = ((state.contact && state.contact.lists) || [])[0]
     html = `<div class="vf-head"><b>Etapa do funil, no seu CRM</b><span>Escolha em que ponto da venda esta conversa está.</span></div>
@@ -1153,8 +1329,9 @@ function renderHdrPop() {
       ${state.lists.length ? state.lists.map((l) => `<button class="vf-row" data-stage="${esc(l.id)}"><i style="background:${esc(l.color)}"></i><span>${esc(l.name)}</span>${cur && cur.id === l.id ? icon("check", 16) : ""}</button>`).join("") : `<p class="vf-empty">Você ainda não tem etapas. Crie abaixo.</p>`}
       <form class="vf-new" data-hform="newlist"><input name="name" placeholder="Nova etapa" maxlength="60" /><button class="vc-btn sm">Criar</button></form>
       <div class="vf-sep"></div>
+      <button class="vf-row" data-fact="kanban">${icon("columns", 16)}<span>Abrir Kanban aqui no WhatsApp</span></button>
       <button class="vf-row" data-fact="out" ${cur ? "" : "disabled"}>${icon("circleminus", 16)}<span>Tirar do funil</span></button>
-      <button class="vf-row" data-fact="config">${icon("settings", 16)}<span>Configurar funil</span></button>
+      <button class="vf-row" data-fact="config">${icon("settings", 16)}<span>Configurar funil no Painel Web</span></button>
       <div class="vf-sep"></div>
       <button class="vf-row" data-fact="hide">${icon("panelleft", 16)}<span>${hdrHidden ? "Mostrar no cabeçalho" : "Deixar só na barrinha"}</span></button>`
   }
@@ -1194,10 +1371,20 @@ async function onHdrPopClick(e) {
   if (!b || b.disabled) return
   if (b.dataset.sched) {
     const t = document.getElementById("vh-text")
-    return scheduleChat(new Date(b.dataset.sched), t ? t.value : "")
+    const m = document.getElementById("vh-msg")
+    return scheduleChat(new Date(b.dataset.sched), t ? t.value : "", m ? m.value : "")
   }
   if (b.dataset.stage) return setStage(b.dataset.stage)
   const act = b.dataset.fact
+  if (act === "kanban") { hdrPop = null; renderHdrPop(); return openKanbanModal() }
+  if (act === "gcal-sched") {
+    const t = (document.getElementById("vh-text") && document.getElementById("vh-text").value) || `Voltar a falar com ${(state.contact && state.contact.name) || state.name || state.phone}`
+    const m = (document.getElementById("vh-msg") && document.getElementById("vh-msg").value) || ""
+    const atVal = document.getElementById("vh-at") && document.getElementById("vh-at").value
+    const dueAt = atVal ? new Date(atVal).toISOString() : new Date(Date.now() + 3600e3).toISOString()
+    window.open(googleCalendarUrl({ title: `${t} (${(state.contact && state.contact.name) || state.name || state.phone})`, details: m ? `Mensagem agendada:\n${m}` : `Telefone: ${state.phone}`, dueAt }), "_blank")
+    return
+  }
   if (act === "out") return leaveFunnel()
   if (act === "config") { if (state.apiUrl) window.open(state.apiUrl + "/dashboard/funil", "_blank"); return }
   if (act === "hide") {
@@ -1220,7 +1407,8 @@ async function onHdrPopSubmit(e) {
     const d = new Date(v)
     if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return toast("Escolha um horário no futuro.")
     const t = document.getElementById("vh-text")
-    return scheduleChat(d, t ? t.value : "")
+    const m = document.getElementById("vh-msg")
+    return scheduleChat(d, t ? t.value : "", m ? m.value : "")
   }
   const name = String(new FormData(form).get("name") || "").trim()
   if (!name) return
@@ -1228,16 +1416,18 @@ async function onHdrPopSubmit(e) {
   if (res.ok && res.data) { state.lists.push(res.data); await setStage(res.data.id) }
 }
 
-async function scheduleChat(due, text) {
+async function scheduleChat(due, text, scheduledMessage = "") {
   const id = await ensureContact()
   if (!id) return toast("Não consegui salvar esta cliente.")
   const label = (text || "").trim() || `Voltar a falar com ${firstName((state.contact && state.contact.name) || state.name) || "a cliente"}`
-  const res = await api("POST", "/api/crm/reminders", { contactId: id, text: label, dueAt: due.toISOString() })
+  const msgClean = (scheduledMessage || "").trim() || null
+  const res = await api("POST", "/api/crm/reminders", { contactId: id, text: label, scheduledMessage: msgClean, dueAt: due.toISOString() })
   if (!res.ok) return toast((res.data && res.data.error) || "Não consegui agendar.")
   hdrPop = null
   renderHdrPop()
   toast("Agendado para " + whenFmt(due.toISOString()))
   refresh(true)
+  refreshInboxData()
 }
 
 /** Encerrar: some do aviso "clientes esperam sua resposta" até a cliente escrever de novo. */
@@ -1252,10 +1442,10 @@ function endConversation() {
 
 // ── Barra de respostas acima do campo + atalho ";" ───────────────────────────
 
-const BAR_ICON = { TEXT: "text", CONTACT: "user", AUDIO: "mic", IMAGE: "image", VIDEO: "film", DOCUMENT: "file" }
+const BAR_ICON = { TEXT: "text", CONTACT: "user", AUDIO: "mic", IMAGE: "image", VIDEO: "film", DOCUMENT: "file", SEQUENCE: "play" }
 
 // ── Preferências da barra (como a engrenagem do Hotzapp) ──
-const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {} }
+const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {}, blur: false }
 
 function savePrefs() {
   try { savePrefs({ vcrmPrefs: prefs }).catch(() => {}) } catch {}
@@ -1292,7 +1482,7 @@ async function clickSend(timeoutMs = 1500) {
 }
 
 function barReplies() {
-  let list = matchReplies("").filter((r) => r.type !== "SEQUENCE")
+  let list = matchReplies("")
   if (prefs.barCat) list = list.filter((r) => (r.category || "Sem categoria") === prefs.barCat)
   return list.slice(0, 80)
 }
@@ -1560,6 +1750,25 @@ async function onClick(e) {
     return
   }
   if (act === "web") { if (state.apiUrl) window.open(state.apiUrl + "/dashboard/funil", "_blank"); return }
+  if (act === "kanban") return openKanbanModal()
+  if (act === "dial") return openDialModal()
+  if (act === "blur") {
+    prefs.blur = !prefs.blur
+    document.documentElement.classList.toggle("vcrm-blur", prefs.blur)
+    savePrefs()
+    render()
+    toast(prefs.blur ? "Modo Privacidade ativado (nomes e valores borrados)." : "Modo Privacidade desativado.")
+    return
+  }
+  if (act === "gcal-form") {
+    const form = document.querySelector("#vcrm-root form[data-form='reminder']")
+    const text = (form && form.querySelector("[name='text']") && form.querySelector("[name='text']").value) || `Retorno: ${(state.contact && state.contact.name) || state.name || state.phone}`
+    const sm = (form && form.querySelector("[name='scheduledMessage']") && form.querySelector("[name='scheduledMessage']").value) || ""
+    const atVal = form && form.querySelector("[name='at']") && form.querySelector("[name='at']").value
+    const dueAt = atVal ? new Date(atVal).toISOString() : new Date(Date.now() + 3600e3).toISOString()
+    window.open(googleCalendarUrl({ title: `${text} (${(state.contact && state.contact.name) || state.name || state.phone})`, details: sm ? `Mensagem agendada:\n${sm}` : `Cliente: ${state.phone}`, dueAt }), "_blank")
+    return
+  }
   if (act === "toggle-lists") { const m = document.getElementById("vc-listmenu"); if (m) m.hidden = !m.hidden; return }
   if (act === "add-contact") { await ensureContact(); return refresh(true) }
 
@@ -1567,8 +1776,33 @@ async function onClick(e) {
   if (t.dataset.removeList) return changeList(t.dataset.removeList, "remove")
   if (t.dataset.reply) { const r = state.replies.find((x) => x.id === t.dataset.reply); if (r) useReply(r); return }
 
+  if (t.dataset.gcalRem) {
+    const r = state.reminders.find((x) => x.id === t.dataset.gcalRem)
+    if (r) {
+      window.open(googleCalendarUrl({ title: `${r.text} (${r.contactName || state.name || state.phone})`, details: r.scheduledMessage ? `Mensagem agendada:\n${r.scheduledMessage}` : `WhatsApp: ${r.contactPhone || state.phone}`, dueAt: r.dueAt }), "_blank")
+    }
+    return
+  }
+  if (t.dataset.remSend) {
+    const r = state.reminders.find((x) => x.id === t.dataset.remSend)
+    if (r && r.scheduledMessage) {
+      const msg = renderVariables(r.scheduledMessage)
+      if (insertIntoComposer(msg)) {
+        if (prefs.sendDirect) {
+          await new Promise((res) => setTimeout(res, 160))
+          await clickSend(1800)
+        }
+        await api("PATCH", `/api/crm/reminders/${r.id}`, { action: "done" })
+        toast("Mensagem agendada enviada e lembrete concluído!")
+        refresh(true)
+        refreshInboxData()
+      }
+    }
+    return
+  }
   if (t.dataset.remDone) {
     await api("PATCH", `/api/crm/reminders/${t.dataset.remDone}`, { action: "done" })
+    refreshInboxData()
     return refresh(true)
   }
   if (t.dataset.remSnooze) {
@@ -1630,6 +1864,28 @@ async function onSubmit(e) {
   const id = await ensureContact()
   if (!id) return msg("Não consegui salvar esta cliente.")
 
+  if (kind === "lead-deal") {
+    msg("Salvando…")
+    const dealValRaw = String(f.get("dealValue") || "").trim()
+    const dealValue = dealValRaw ? parseFloat(dealValRaw) : null
+    const body = {
+      email: String(f.get("email") || "").trim() || null,
+      source: String(f.get("source") || "").trim() || null,
+      birthDate: String(f.get("birthDate") || "").trim() || null,
+      lifecycleStage: String(f.get("lifecycleStage") || "lead"),
+      leadStatus: String(f.get("leadStatus") || "novo"),
+      dealTitle: String(f.get("dealTitle") || "").trim() || null,
+      dealValue: dealValue != null && !Number.isNaN(dealValue) ? dealValue : null,
+      dealStage: String(f.get("dealStage") || "aberto"),
+      nextStep: String(f.get("nextStep") || "").trim() || null,
+      nextStepAt: String(f.get("nextStepAt") || "").trim() || null,
+    }
+    const res = await api("PATCH", `/api/crm/contacts/${id}`, body)
+    if (!res.ok) return msg((res.data && res.data.error) || "Erro ao salvar dados.")
+    toast("Dados do lead e negócio salvos!")
+    return refresh(true)
+  }
+
   if (kind === "note") {
     const text = String(f.get("text") || "").trim()
     if (!text) return msg("Escreva a nota.")
@@ -1640,11 +1896,12 @@ async function onSubmit(e) {
 
   if (kind === "reminder") {
     const text = String(f.get("text") || "").trim()
+    const scheduledMessage = String(f.get("scheduledMessage") || "").trim() || null
     const at = new Date(String(f.get("at")))
     if (!text) return msg("Escreva o lembrete.")
     if (Number.isNaN(at.getTime())) return msg("Informe data e hora.")
-    const res = await api("POST", "/api/crm/reminders", { contactId: id, text, dueAt: at.toISOString() })
-    if (res.ok) return refresh(true)
+    const res = await api("POST", "/api/crm/reminders", { contactId: id, text, scheduledMessage, dueAt: at.toISOString() })
+    if (res.ok) { refreshInboxData(); return refresh(true) }
     return msg((res.data && res.data.error) || "Erro ao criar o lembrete.")
   }
 
@@ -1758,7 +2015,460 @@ async function refresh(force) {
   }
   state.status = "ok"
   ensureBar()
+  ensureInboxTabs()
   render()
+}
+
+// ── HotZapp: Abas de Filtro acima da lista de conversas (#pane-side) ─────────
+
+const INBOX_TABS_ID = "vcrm-inbox-tabs"
+const INBOX_LIST_ID = "vcrm-inbox-list"
+const inbox = {
+  tab: "all", // "all" | "unread" | "waiting" | "scheduled" | "funnel"
+  stageId: "all",
+  chats: [],
+  allReminders: [],
+  funnelData: null,
+  lastScanAt: 0,
+}
+
+async function refreshInboxData(forceScan = false) {
+  if (state.status === "no_config" || state.status === "bad_token") return
+  const now = Date.now()
+  if (forceScan || now - inbox.lastScanAt > 8000 || !inbox.chats.length) {
+    inbox.lastScanAt = now
+    const r = await askBridge("scan", 6000)
+    if (r && Array.isArray(r.chats)) inbox.chats = r.chats
+  }
+  const [remRes, funRes] = await Promise.all([
+    api("GET", "/api/crm/reminders"),
+    api("GET", "/api/crm/funnel"),
+  ])
+  if (remRes.ok && remRes.data && Array.isArray(remRes.data.reminders)) inbox.allReminders = remRes.data.reminders
+  if (funRes.ok && funRes.data) inbox.funnelData = funRes.data
+  ensureInboxTabs()
+  checkDueReminders()
+}
+
+function ensureInboxTabs() {
+  const pane = document.querySelector("#pane-side")
+  let bar = document.getElementById(INBOX_TABS_ID)
+  let listEl = document.getElementById(INBOX_LIST_ID)
+  if (!pane || state.status === "no_config" || state.status === "bad_token") {
+    if (bar) bar.remove()
+    if (listEl) listEl.remove()
+    return
+  }
+  if (!bar) {
+    bar = document.createElement("div")
+    bar.id = INBOX_TABS_ID
+    bar.addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-ib-tab]")
+      if (b) {
+        const next = b.dataset.ibTab
+        inbox.tab = inbox.tab === next && next !== "all" ? "all" : next
+        if (inbox.tab !== "all") await refreshInboxData(true)
+        else ensureInboxTabs()
+        return
+      }
+      const st = e.target.closest("button[data-ib-stage]")
+      if (st) {
+        inbox.stageId = st.dataset.ibStage
+        ensureInboxTabs()
+      }
+    })
+    pane.parentNode.insertBefore(bar, pane)
+  }
+
+  const unreadCount = inbox.chats.filter((c) => !c.archived && c.unread > 0).length
+  const waitCount = waitList.length || inbox.chats.filter((c) => !c.archived && c.lastFromMe === false).length
+  const schedCount = inbox.allReminders.filter((r) => r.state !== "feito").length
+  const funnelLists = (inbox.funnelData && inbox.funnelData.lists) || state.lists || []
+
+  const tabsHtml = `
+    <div class="vib-row">
+      <button data-ib-tab="all" class="${inbox.tab === "all" ? "on" : ""}">Todas</button>
+      <button data-ib-tab="unread" class="${inbox.tab === "unread" ? "on" : ""}">Não lidas${unreadCount ? ` <b>${unreadCount}</b>` : ""}</button>
+      <button data-ib-tab="waiting" class="${inbox.tab === "waiting" ? "on" : ""}">Esperando${waitCount ? ` <b>${waitCount}</b>` : ""}</button>
+      <button data-ib-tab="scheduled" class="${inbox.tab === "scheduled" ? "on" : ""}">Agendadas${schedCount ? ` <b class="amber">${schedCount}</b>` : ""}</button>
+      <button data-ib-tab="funnel" class="${inbox.tab === "funnel" ? "on" : ""}">Funil</button>
+    </div>
+    ${inbox.tab === "funnel" ? `
+    <div class="vib-stages">
+      <button data-ib-stage="all" class="${inbox.stageId === "all" ? "on" : ""}">Todas etapas</button>
+      ${funnelLists.map((l) => `<button data-ib-stage="${esc(l.id)}" class="${inbox.stageId === l.id ? "on" : ""}"><i style="background:${esc(l.color)}"></i>${esc(l.name)}</button>`).join("")}
+    </div>` : ""}
+  `
+  if (bar.dataset.sig !== tabsHtml) { bar.innerHTML = tabsHtml; bar.dataset.sig = tabsHtml }
+
+  if (inbox.tab === "all") {
+    if (listEl) listEl.remove()
+    pane.style.display = ""
+    return
+  }
+
+  // Renderiza lista filtrada sobre o #pane-side (funciona mesmo para conversas que o WhatsApp rolou pra fora do DOM)
+  if (!listEl) {
+    listEl = document.createElement("div")
+    listEl.id = INBOX_LIST_ID
+    listEl.addEventListener("click", async (e) => {
+      const item = e.target.closest("[data-ib-open]")
+      if (!item) return
+      const key = item.getAttribute("data-ib-open")
+      const r = await askBridge("open", 3500, key)
+      if (!r || !r.opened) toast("Não consegui abrir direto. Use a busca do WhatsApp.")
+    })
+    pane.parentNode.insertBefore(listEl, pane)
+  }
+  pane.style.display = "none"
+
+  let items = []
+  if (inbox.tab === "unread") {
+    items = inbox.chats.filter((c) => !c.archived && c.unread > 0).map((c) => ({
+      key: c.key || c.phone,
+      name: c.name || c.phone,
+      sub: c.preview || c.phone,
+      badge: `${c.unread} não lida${c.unread > 1 ? "s" : ""}`,
+      badgeCls: "green",
+      pic: c.pic || photoFromList(c.name),
+    }))
+  } else if (inbox.tab === "waiting") {
+    const source = waitList.length ? waitList : inbox.chats.filter((c) => !c.archived && c.lastFromMe === false)
+    items = source.map((w) => ({
+      key: w.key || w.phone,
+      name: w.name || w.phone,
+      sub: w.preview || "Aguardando sua resposta",
+      badge: w.mins != null ? waitFmt(w.mins) : "Aguardando",
+      badgeCls: w.mins >= 180 ? "red" : "amber",
+      pic: w.pic || photoFromList(w.name),
+    }))
+  } else if (inbox.tab === "scheduled") {
+    items = inbox.allReminders.filter((r) => r.state !== "feito").map((r) => ({
+      key: r.contactPhone,
+      name: r.contactName || r.contactPhone,
+      sub: r.scheduledMessage ? `📤 ${r.scheduledMessage}` : `⏰ ${r.text}`,
+      badge: whenFmt(r.dueAt),
+      badgeCls: r.state === "atrasado" ? "red" : "amber",
+      pic: photoFromList(r.contactName),
+    }))
+  } else if (inbox.tab === "funnel") {
+    const cols = ((inbox.funnelData && inbox.funnelData.lists) || []).filter((l) => inbox.stageId === "all" || l.id === inbox.stageId)
+    for (const col of cols) {
+      for (const card of col.cards || []) {
+        items.push({
+          key: card.phone,
+          name: card.name || card.phone,
+          sub: card.dealValue ? `Negócio: ${brl(card.dealValue)}${card.nextStep ? " · " + card.nextStep : ""}` : card.nextStep || `Total comprado: ${brl(card.totalSpent)}`,
+          badge: col.name,
+          badgeColor: col.color,
+          pic: photoFromList(card.name),
+        })
+      }
+    }
+  }
+
+  const listHtml = `
+    <div class="vib-head">
+      <span>${items.length} conversa${items.length === 1 ? "" : "s"} neste filtro</span>
+      <button class="vc-link" data-ib-clear="1">Voltar para Todas</button>
+    </div>
+    ${items.length ? items.map((it) => `
+      <button class="vib-item" data-ib-open="${esc(it.key)}">
+        ${it.pic ? `<img class="vw-av" src="${esc(it.pic)}" data-ini="${esc((it.name || "?").slice(0, 1).toUpperCase())}" alt="" />` : `<span class="vw-av">${esc((it.name || "?").slice(0, 1).toUpperCase())}</span>`}
+        <div class="vib-tx">
+          <b>${esc(it.name)}</b>
+          <small>${esc(it.sub)}</small>
+        </div>
+        <span class="vib-tag ${it.badgeCls || ""}" ${it.badgeColor ? `style="border-color:${esc(it.badgeColor)};color:${esc(it.badgeColor)}"` : ""}>${esc(it.badge)}</span>
+      </button>
+    `).join("") : `<div class="vib-empty">Nenhuma conversa encontrada neste filtro.</div>`}
+  `
+  if (listEl.dataset.sig !== listHtml) {
+    listEl.innerHTML = listHtml
+    listEl.dataset.sig = listHtml
+    const clearBtn = listEl.querySelector("[data-ib-clear]")
+    if (clearBtn) clearBtn.addEventListener("click", () => { inbox.tab = "all"; ensureInboxTabs() })
+  }
+}
+
+// ── HotZapp: Quadro Kanban Tela Cheia dentro do WhatsApp Web ─────────────────
+
+const KANBAN_MODAL_ID = "vcrm-kanban-modal"
+let kbSearch = ""
+
+async function openKanbanModal() {
+  let modal = document.getElementById(KANBAN_MODAL_ID)
+  if (modal) { modal.remove(); return }
+  modal = document.createElement("div")
+  modal.id = KANBAN_MODAL_ID
+  modal.innerHTML = `<div class="vkb-box"><div class="vkb-top"><b>Carregando Quadro Kanban…</b><button class="vc-x" data-kb-close="1">${icon("x", 18)}</button></div></div>`
+  document.body.appendChild(modal)
+
+  modal.addEventListener("click", async (e) => {
+    if (e.target === modal || e.target.closest("[data-kb-close]")) { modal.remove(); return }
+    const openBtn = e.target.closest("[data-kb-open]")
+    if (openBtn) {
+      const phone = openBtn.getAttribute("data-kb-open")
+      modal.remove()
+      const r = await askBridge("open", 3500, phone)
+      if (!r || !r.opened) toast("Não consegui abrir a conversa automaticamente.")
+      return
+    }
+  })
+
+  modal.addEventListener("change", async (e) => {
+    const sel = e.target.closest("select[data-kb-move]")
+    if (!sel) return
+    const contactId = sel.getAttribute("data-kb-move")
+    const fromListId = sel.getAttribute("data-kb-from") || null
+    const toListId = sel.value || null
+    const res = await api("POST", "/api/crm/funnel/move", { contactId, fromListId, toListId })
+    if (!res.ok) return toast("Não consegui mover o card.")
+    toast("Etapa atualizada!")
+    renderKanbanModalContent()
+    refresh(true)
+  })
+
+  modal.addEventListener("submit", async (e) => {
+    const form = e.target.closest("form[data-kb-newlist]")
+    if (!form) return
+    e.preventDefault()
+    const name = String(new FormData(form).get("name") || "").trim()
+    if (!name) return
+    const res = await api("POST", "/api/crm/lists", { name })
+    if (res.ok && res.data) {
+      state.lists.push(res.data)
+      renderKanbanModalContent()
+    }
+  })
+
+  modal.addEventListener("input", (e) => {
+    if (e.target.matches("[data-kb-search]")) {
+      kbSearch = e.target.value
+      renderKanbanModalContent(true)
+    }
+  })
+
+  await renderKanbanModalContent()
+}
+
+async function renderKanbanModalContent(skipFetch = false) {
+  const modal = document.getElementById(KANBAN_MODAL_ID)
+  if (!modal) return
+  if (!skipFetch || !inbox.funnelData) {
+    const res = await api("GET", "/api/crm/funnel")
+    if (!res.ok || !res.data) {
+      modal.innerHTML = `<div class="vkb-box"><div class="vkb-top"><b>Erro ao carregar o Funil</b><button class="vc-x" data-kb-close="1">${icon("x", 18)}</button></div><p class="vc-muted" style="padding:20px">Verifique a conexão com o servidor.</p></div>`
+      return
+    }
+    inbox.funnelData = res.data
+  }
+  const f = inbox.funnelData
+  const allCols = [
+    { id: "", name: "Sem etapa", color: "#71717a", total: f.unassigned.total, cards: f.unassigned.cards },
+    ...f.lists,
+  ]
+  const q = kbSearch.trim().toLowerCase()
+  const match = (c) => !q || (c.name || "").toLowerCase().includes(q) || (c.phone || "").includes(q) || (c.dealTitle || "").toLowerCase().includes(q)
+
+  const boxHtml = `
+    <div class="vkb-box">
+      <header class="vkb-top">
+        <div>
+          <b>Quadro Kanban — Vision CRM &amp; HubSpot Pipeline</b>
+          <span class="vkb-kpis">
+            <em>Contatos: <b>${f.totals.contacts}</b></em>
+            <em>Em negociação: <b class="gold">${brl(f.totals.pipelineValue || 0)}</b></em>
+            <em>Total vendido: <b class="green">${brl(f.totals.totalSpent || 0)}</b></em>
+          </span>
+        </div>
+        <div class="vkb-tools">
+          <input class="vc-search" data-kb-search placeholder="Buscar cliente ou negócio…" value="${esc(kbSearch)}" />
+          <form class="vkb-newcol" data-kb-newlist="1">
+            <input name="name" placeholder="+ Nova coluna" maxlength="50" />
+            <button class="vc-btn sm">Criar</button>
+          </form>
+          <button class="vc-x" data-kb-close="1" title="Fechar (Esc)">${icon("x", 20)}</button>
+        </div>
+      </header>
+      <div class="vkb-cols">
+        ${allCols.map((col) => {
+          const cards = (col.cards || []).filter(match)
+          const colDealSum = cards.reduce((s, c) => s + (c.dealValue || 0), 0)
+          return `
+            <div class="vkb-col" data-kb-col="${esc(col.id)}">
+              <div class="vkb-col-head">
+                <i style="background:${esc(col.color)}"></i>
+                <b>${esc(col.name)}</b>
+                <span>${cards.length}</span>
+                ${colDealSum > 0 ? `<em class="vkb-col-sum">${brl(colDealSum)}</em>` : ""}
+              </div>
+              <div class="vkb-col-body">
+                ${cards.length ? cards.map((c) => `
+                  <div class="vkb-card" draggable="true" data-kb-card="${esc(c.id)}" data-kb-from="${esc(col.id)}">
+                    <div class="vkb-card-top">
+                      <b>${esc(c.name || c.phone)}</b>
+                      <button class="vkb-open" data-kb-open="${esc(c.phone)}" title="Abrir conversa no WhatsApp">${icon("send", 12)} Conversar</button>
+                    </div>
+                    <div class="vkb-card-sub">${esc(c.phone)}</div>
+                    <div class="vkb-badges">
+                      ${c.dealValue ? `<span class="vc-badge gold">${esc(c.dealTitle || "Negócio")}: ${brl(c.dealValue)}</span>` : ""}
+                      ${c.totalSpent > 0 ? `<span class="vc-badge">${c.purchases}× · ${brl(c.totalSpent)}</span>` : ""}
+                      ${c.chargesDue && c.chargesDue.overdue ? `<span class="vc-badge vencida">Vencida ${brl(c.chargesDue.overdueTotal)}</span>` : ""}
+                    </div>
+                    ${c.nextStep ? `<div class="vkb-step ${c.nextStepState === "atrasado" ? "late" : ""}">⏭ ${esc(c.nextStep)}</div>` : ""}
+                    <select class="vkb-move" data-kb-move="${esc(c.id)}" data-kb-from="${esc(col.id)}">
+                      <option value="" ${!col.id ? "selected" : ""}>Sem etapa</option>
+                      ${f.lists.map((l) => `<option value="${esc(l.id)}" ${col.id === l.id ? "selected" : ""}>Mover → ${esc(l.name)}</option>`).join("")}
+                    </select>
+                  </div>
+                `).join("") : `<div class="vkb-empty">Vazio</div>`}
+              </div>
+            </div>
+          `
+        }).join("")}
+      </div>
+    </div>
+  `
+  const searchActive = document.activeElement && document.activeElement.matches("[data-kb-search]")
+  const pos = searchActive ? document.activeElement.selectionStart : null
+  modal.innerHTML = boxHtml
+  if (searchActive) {
+    const inp = modal.querySelector("[data-kb-search]")
+    if (inp) { inp.focus(); try { inp.setSelectionRange(pos, pos) } catch {} }
+  }
+
+  // Drag and drop nas colunas do Kanban dentro do WhatsApp
+  let dragCardId = null
+  let dragFromId = null
+  modal.querySelectorAll("[data-kb-card]").forEach((el) => {
+    el.addEventListener("dragstart", () => {
+      dragCardId = el.getAttribute("data-kb-card")
+      dragFromId = el.getAttribute("data-kb-from") || null
+    })
+  })
+  modal.querySelectorAll("[data-kb-col]").forEach((colEl) => {
+    colEl.addEventListener("dragover", (ev) => { ev.preventDefault(); colEl.classList.add("dragover") })
+    colEl.addEventListener("dragleave", () => colEl.classList.remove("dragover"))
+    colEl.addEventListener("drop", async (ev) => {
+      ev.preventDefault()
+      colEl.classList.remove("dragover")
+      const toListId = colEl.getAttribute("data-kb-col") || null
+      if (!dragCardId || dragFromId === toListId) return
+      await api("POST", "/api/crm/funnel/move", { contactId: dragCardId, fromListId: dragFromId, toListId })
+      toast("Card movido!")
+      renderKanbanModalContent()
+      refresh(true)
+    })
+  })
+}
+
+// ── HotZapp: Abrir conversa sem salvar número na agenda (Click-to-Chat) ──────
+
+const DIAL_MODAL_ID = "vcrm-dial-modal"
+
+function openDialModal() {
+  let m = document.getElementById(DIAL_MODAL_ID)
+  if (m) { m.remove(); return }
+  m = document.createElement("div")
+  m.id = DIAL_MODAL_ID
+  m.innerHTML = `
+    <form class="vdial-box">
+      <div class="vkb-top">
+        <b>Abrir conversa sem salvar contato</b>
+        <button type="button" class="vc-x" data-dial-close="1">${icon("x", 18)}</button>
+      </div>
+      <p class="vc-muted">Digite o DDD + número para iniciar a conversa direto aqui no WhatsApp Web.</p>
+      <input name="phone" placeholder="Ex.: 11 99999-8888" autofocus required />
+      <textarea name="msg" rows="3" placeholder="Mensagem inicial (opcional — já cola no campo ao abrir)"></textarea>
+      <div class="vc-actions">
+        <button type="button" class="vc-ghost" data-dial-close="1">Cancelar</button>
+        <button class="vc-btn">${icon("send", 14)} Abrir conversa</button>
+      </div>
+    </form>
+  `
+  m.addEventListener("click", (e) => {
+    if (e.target === m || e.target.closest("[data-dial-close]")) m.remove()
+  })
+  m.querySelector("form").addEventListener("submit", async (e) => {
+    e.preventDefault()
+    const fd = new FormData(e.target)
+    const raw = String(fd.get("phone") || "").replace(/\D/g, "")
+    const msg = String(fd.get("msg") || "").trim()
+    if (raw.length < 10) return toast("Digite o DDD + número com pelo menos 10 dígitos.")
+    const full = raw.length <= 11 && !raw.startsWith("55") ? "55" + raw : raw
+    m.remove()
+    const r = await askBridge("open", 4000, full)
+    if (r && r.opened) {
+      if (msg) setTimeout(() => insertIntoComposer(renderVariables(msg)), 900)
+      toast("Conversa aberta!")
+    } else {
+      toast("Não consegui abrir sem recarregar. Verifique o número.")
+    }
+  })
+  document.body.appendChild(m)
+}
+
+// ── HotZapp: Aviso ativo quando mensagem agendada / lembrete chega na hora ───
+
+const DUE_ALERT_ID = "vcrm-due-alert"
+const dismissedReminders = new Set()
+
+function checkDueReminders() {
+  let el = document.getElementById(DUE_ALERT_ID)
+  const now = Date.now()
+  const due = (inbox.allReminders || []).find(
+    (r) => !r.doneAt && r.state !== "feito" && !dismissedReminders.has(r.id) && new Date(r.dueAt).getTime() <= now
+  )
+  if (!due || state.status === "no_config" || state.status === "bad_token") {
+    if (el) el.remove()
+    return
+  }
+  if (!el) {
+    el = document.createElement("div")
+    el.id = DUE_ALERT_ID
+    document.body.appendChild(el)
+  }
+  const html = `
+    <div class="vdue-main">
+      ${icon("alarm", 18)}
+      <div>
+        <b>Horário agendado: ${esc(due.contactName || due.contactPhone)}</b>
+        <span>${esc(due.text)}${due.scheduledMessage ? ` — Mensagem pronta: "${esc(due.scheduledMessage.slice(0, 60))}"` : ""}</span>
+      </div>
+    </div>
+    <div class="vdue-acts">
+      <button class="vc-btn sm" data-due-go="${esc(due.id)}">${icon("send", 13)} ${due.scheduledMessage ? "Abrir e Enviar" : "Abrir conversa"}</button>
+      <button class="vc-ghost" data-due-dismiss="${esc(due.id)}">Depois</button>
+    </div>
+  `
+  if (el.dataset.sig !== html) {
+    el.innerHTML = html
+    el.dataset.sig = html
+    el.onclick = async (e) => {
+      const go = e.target.closest("[data-due-go]")
+      if (go) {
+        await askBridge("open", 3500, due.contactPhone)
+        if (due.scheduledMessage) {
+          await new Promise((res) => setTimeout(res, 900))
+          if (insertIntoComposer(renderVariables(due.scheduledMessage)) && prefs.sendDirect) {
+            await new Promise((res) => setTimeout(res, 200))
+            await clickSend(1800)
+          }
+        }
+        await api("PATCH", `/api/crm/reminders/${due.id}`, { action: "done" })
+        dismissedReminders.add(due.id)
+        await refreshInboxData()
+        refresh(true)
+        return
+      }
+      const dis = e.target.closest("[data-due-dismiss]")
+      if (dis) {
+        dismissedReminders.add(due.id)
+        checkDueReminders()
+      }
+    }
+  }
 }
 
 // ── Início ───────────────────────────────────────────────────────────────────
@@ -1767,9 +2477,9 @@ function startObserver() {
   const root = document.querySelector("#app") || document.body
   let timer = null
   const obs = new MutationObserver((muts) => {
-    if (muts.every((m) => m.target.closest && m.target.closest(`#${ROOT_ID}, #${BAR_ID}, #${POP_ID}`))) return
+    if (muts.every((m) => m.target.closest && m.target.closest(`#${ROOT_ID}, #${BAR_ID}, #${POP_ID}, #${INBOX_TABS_ID}, #${INBOX_LIST_ID}, #${KANBAN_MODAL_ID}`))) return
     clearTimeout(timer)
-    timer = setTimeout(() => { refresh(false); ensureBar(); ensureSide(); ensureHeaderBar() }, 400)
+    timer = setTimeout(() => { refresh(false); ensureBar(); ensureSide(); ensureHeaderBar(); ensureInboxTabs() }, 400)
   })
   obs.observe(root, { childList: true, subtree: true })
   // janelas (modais) às vezes entram direto no <body>: esconde a barrinha e o aviso na hora
@@ -1797,10 +2507,12 @@ function init() {
     waitHandled = c.vcrmHandled || {}
     hdrHidden = !!c.vcrmHdrHidden
     if (c.vcrmPrefs) Object.assign(prefs, c.vcrmPrefs)
-    ensureHeaderBar(); ensureSide(); ensureBar()
+    document.documentElement.classList.toggle("vcrm-blur", !!prefs.blur)
+    ensureHeaderBar(); ensureSide(); ensureBar(); ensureInboxTabs()
   }).catch(() => {})
-  setTimeout(checkWaiting, 4000)
+  setTimeout(() => { checkWaiting(); refreshInboxData(true) }, 4000)
   setInterval(checkWaiting, 5000) // lê só a memória do WhatsApp: é leve, e mantém a lista em tempo real
+  setInterval(() => refreshInboxData(false), 25000)
 }
 
 const boot = setInterval(() => {

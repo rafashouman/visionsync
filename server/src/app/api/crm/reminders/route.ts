@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
 const schema = z.object({
   contactId: z.string().min(1),
   text: z.string().trim().min(1, "Escreva o lembrete").max(300, "O lembrete passou de 300 caracteres"),
+  scheduledMessage: z.string().trim().max(2000, "A mensagem agendada passou de 2000 caracteres").nullable().optional(),
   dueAt: z.string().min(1, "Informe quando"),
 })
 
@@ -35,7 +36,13 @@ export async function POST(req: NextRequest) {
   if (!contact) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
 
   const r = await prisma.reminder.create({
-    data: { userId: user.id, contactId: contact.id, text: parsed.data.text, dueAt: due },
+    data: {
+      userId: user.id,
+      contactId: contact.id,
+      text: parsed.data.text,
+      scheduledMessage: parsed.data.scheduledMessage || null,
+      dueAt: due,
+    },
   })
   await prisma.contact.update({ where: { id: contact.id }, data: { lastActivityAt: new Date() } })
   return NextResponse.json({ id: r.id }, { status: 201 })

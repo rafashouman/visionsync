@@ -11,7 +11,6 @@ export type CheckResult = { ok: true; file: CheckedFile } | { ok: false; status:
 /** Nome seguro: sem pasta, sem caracteres de controle, até 120 caracteres. */
 export function sanitizeFileName(raw: string): string {
   const base = raw.split(/[\\/]/).pop() ?? ""
-  // eslint-disable-next-line no-control-regex
   const clean = base.replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "").replace(/\s+/g, " ").trim()
   if (!clean) return "arquivo"
   if (clean.length <= 120) return clean

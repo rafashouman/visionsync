@@ -10,7 +10,7 @@ export const TYPE_INFO: Record<QuickReplyKind, { label: string; hint: string; av
   VIDEO: { label: "Vídeo", hint: "Um vídeo curto com legenda opcional", available: true },
   DOCUMENT: { label: "Documento", hint: "PDF, planilha, zip e outros", available: true },
   CONTACT: { label: "Contato", hint: "Cartão de contato: quem recebe toca e salva", available: true },
-  SEQUENCE: { label: "Sequência", hint: "Falta ver como é o formulário", available: false },
+  SEQUENCE: { label: "Sequência", hint: "Várias mensagens enviadas em sequência com intervalo", available: true },
 }
 
 /* ───────────── Arquivos (guardados no banco) ───────────── */

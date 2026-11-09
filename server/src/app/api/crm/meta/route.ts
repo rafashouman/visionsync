@@ -21,6 +21,7 @@ export async function GET() {
 
   return NextResponse.json({
     graphVersion: META_GRAPH_VERSION,
+    sendEnabled: process.env.META_SEND_ENABLED === "true",
     pixels: pixels.map((p) => {
       let tokenHint = "(ilegível, salve de novo)"
       try {

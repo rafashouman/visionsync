@@ -14,13 +14,22 @@
     "db:generate": "npm run db:generate --workspace @visionsync/web",
     "db:push": "npm run db:push --workspace @visionsync/web",
     "db:indexes": "npm run db:indexes --workspace @visionsync/web",
+    "db:migrate:legacy": "npm run db:migrate:legacy --workspace @visionsync/web",
     "extension:build": "npm run build --workspace @visionsync/extension"
   },
   "engines": {
     "node": ">=22.14"
   },
   "overrides": {
-    "@prisma/config": { "deepmerge-ts": "8.0.2", "effect": "3.20.1" },
-    "@typescript-eslint/typescript-estree": { "minimatch": "11.0.5" }
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2",
+      "effect": "3.20.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "11.0.5"
+    }
+  },
+  "devDependencies": {
+    "supabase": "^3.1.0"
   }
 }

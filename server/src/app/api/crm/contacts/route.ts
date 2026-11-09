@@ -1,3 +1,4 @@
+import { listContacts } from "@/lib/contacts"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
@@ -16,25 +17,8 @@ export async function GET(req: NextRequest) {
   const user = await getAuthUser(req)
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
 
-  const q = (new URL(req.url).searchParams.get("q") ?? "").trim()
-  const digits = normalizePhone(q)
-
-  const contacts = await prisma.contact.findMany({
-    where: {
-      userId: user.id,
-      ...(q && {
-        OR: [
-          { name: { contains: q, mode: "insensitive" as const } },
-          ...(digits ? [{ phone: { contains: digits } }] : []),
-        ],
-      }),
-    },
-    orderBy: { lastActivityAt: "desc" },
-    take: 20,
-    select: { id: true, name: true, phone: true },
-  })
-
-  return NextResponse.json(contacts)
+  const data = await listContacts(user.id, req.nextUrl.searchParams.get("q") ?? "", req.nextUrl.searchParams.get("cursor") ?? "")
+  return NextResponse.json(req.nextUrl.searchParams.get("paginate") === "1" ? data : data.items)
 }
 
 // POST /api/crm/contacts -> cria um contato à mão. Se o telefone já existe, devolve o existente.

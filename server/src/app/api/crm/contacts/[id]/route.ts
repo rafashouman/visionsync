@@ -3,7 +3,7 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getAuthUser } from "@/lib/crm-auth"
 import { dayKey, parseDay } from "@/lib/dates"
-import { SOURCES } from "@/lib/sources"
+import { SOURCES, LIFECYCLE_STAGES, LEAD_STATUSES, DEAL_STAGES } from "@/lib/sources"
 import { getContactDetail } from "@/lib/contact-detail"
 
 // GET /api/crm/contacts/[id] -> dados do lead, notas, etiquetas, estatísticas e compras.
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
 
   const { id } = await ctx.params
-  const detail = await getContactDetail(user.id, id)
+  const detail = await getContactDetail(user.id, id, Number(req.nextUrl.searchParams.get("purchasePage")) || 1)
   if (!detail) return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 })
   return NextResponse.json(detail)
 }
@@ -24,6 +24,11 @@ const schema = z.object({
   birthDate: z.string().nullable().optional(), // "YYYY-MM-DD"; ""/null apaga
   nextStep: z.string().trim().max(200).nullable().optional(), // null ou "" apaga
   nextStepAt: z.string().nullable().optional(), // "YYYY-MM-DD" ou ISO; null ou "" apaga
+  lifecycleStage: z.union([z.literal(""), z.enum(LIFECYCLE_STAGES)]).nullable().optional(),
+  leadStatus: z.union([z.literal(""), z.enum(LEAD_STATUSES)]).nullable().optional(),
+  dealTitle: z.string().trim().max(120).nullable().optional(),
+  dealValue: z.number().min(0).max(10_000_000).nullable().optional(),
+  dealStage: z.union([z.literal(""), z.enum(DEAL_STAGES)]).nullable().optional(),
 })
 
 // PATCH /api/crm/contacts/[id] -> dados do lead e/ou próximo passo com prazo.
@@ -39,7 +44,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" }, { status: 400 })
   }
-  const { name, email, source, birthDate, nextStep, nextStepAt } = parsed.data
+  const { name, email, source, birthDate, nextStep, nextStepAt, lifecycleStage, leadStatus, dealTitle, dealValue, dealStage } = parsed.data
 
   let due: Date | null | undefined = undefined
   if (nextStepAt !== undefined) {
@@ -61,7 +66,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   const clearStep = nextStep !== undefined && !nextStep
-  const touchesStep = nextStep !== undefined || nextStepAt !== undefined
+  const touchesStep = nextStep !== undefined || nextStepAt !== undefined || dealValue !== undefined || dealStage !== undefined || leadStatus !== undefined || lifecycleStage !== undefined
 
   const updated = await prisma.contact.update({
     where: { id },
@@ -71,6 +76,11 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(source !== undefined && { source: source || null }),
       ...(birth !== undefined && { birthDate: birth }),
       ...(nextStep !== undefined && { nextStep: nextStep || null }),
+      ...(lifecycleStage !== undefined && { lifecycleStage: lifecycleStage || "lead" }),
+      ...(leadStatus !== undefined && { leadStatus: leadStatus || "novo" }),
+      ...(dealTitle !== undefined && { dealTitle: dealTitle || null }),
+      ...(dealValue !== undefined && { dealValue: dealValue ?? null }),
+      ...(dealStage !== undefined && { dealStage: dealStage || null }),
       // apagar o texto do passo também apaga o prazo
       ...(clearStep ? { nextStepAt: null } : due !== undefined ? { nextStepAt: due } : {}),
       // só mexer no próximo passo conta como atividade; corrigir e-mail ou nascimento não
@@ -86,5 +96,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     birthDate: updated.birthDate ? dayKey(updated.birthDate) : null,
     nextStep: updated.nextStep,
     nextStepAt: updated.nextStepAt?.toISOString() ?? null,
+    lifecycleStage: updated.lifecycleStage ?? "lead",
+    leadStatus: updated.leadStatus ?? "novo",
+    dealTitle: updated.dealTitle ?? null,
+    dealValue: updated.dealValue ?? null,
+    dealStage: updated.dealStage ?? null,
   })
 }

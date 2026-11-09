@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getAuthUser } from "@/lib/crm-auth"
+import { validAmount, toMinor } from "@/lib/money"
 import { parseDay } from "@/lib/dates"
 import { listCharges, type ChargeFilter } from "@/lib/charges"
 
@@ -14,12 +15,12 @@ export async function GET(req: NextRequest) {
 
   const status = new URL(req.url).searchParams.get("status") ?? "todas"
   const filter = (FILTERS as string[]).includes(status) ? (status as ChargeFilter) : "todas"
-  return NextResponse.json(await listCharges(user.id, filter))
+  return NextResponse.json(await listCharges(user.id, filter, Number(req.nextUrl.searchParams.get("page"))))
 }
 
 const schema = z.object({
   contactId: z.string().min(1),
-  amount: z.number().positive("Informe um valor maior que zero"),
+  amount: z.number().refine(validAmount, "Informe um valor positivo com até duas casas decimais e dentro do limite permitido."),
   dueDate: z.string().min(1, "Informe o vencimento"),
   description: z.string().trim().max(200).optional(),
   paymentLink: z.string().trim().max(1000).optional(), // link de pagamento ou Pix copia-e-cola
@@ -47,7 +48,9 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         contactId: contact.id,
-        amount: data.amount,
+        amount: toMinor(data.amount) / 100,
+        amountMinor: toMinor(data.amount),
+        currency: "BRL",
         dueDate: due,
         description: data.description || null,
         paymentLink: data.paymentLink || null,

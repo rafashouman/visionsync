@@ -76,7 +76,8 @@ export function RemindersBoard() {
   }, [])
 
   useEffect(() => {
-    load(tab)
+    const task = setTimeout(() => void load(tab), 0)
+    return () => clearTimeout(task)
   }, [tab, load])
 
   async function act(r: ReminderView, action: "done" | "reopen" | "snooze" | "delete", until?: Date) {

@@ -1,11 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Ellipsis, Flame, HandCoins, MessageSquare, Plus, Search, TrendingUp } from "lucide-react"
 import type { Funnel, FunnelCard, FunnelColumn } from "@/lib/funnel"
 import { withCountryCode } from "@/lib/phone"
 import { SOURCES, SOURCE_LABEL, sourceLabel } from "@/lib/sources"
-import { ContactDrawer } from "@/components/contact-drawer"
+import dynamic from "next/dynamic"
+const ContactDrawer = dynamic(() => import("./contact-drawer").then(module => module.ContactDrawer), { loading: () => <p role="status">Abrindo contato…</p> })
 import { PageHeader } from "@/components/page-header"
 import { btn, btnSm, card, chip, errorText, field, ghost, ghostSm, iconBtn, inner, link } from "@/lib/ui"
 
@@ -38,8 +39,11 @@ async function call(method: string, url: string, body?: unknown) {
   return data
 }
 
-export function FunnelBoard() {
-  const [funnel, setFunnel] = useState<Funnel | null>(null)
+export function FunnelBoard({ initial }: { initial?: Funnel }) {
+  const [pages, setPages] = useState<Record<string, number>>({})
+  const sequence = useRef(0)
+  const skipInitial = useRef(Boolean(initial))
+  const [funnel, setFunnel] = useState<Funnel | null>(initial ?? null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [stepFilter, setStepFilter] = useState<StepFilter>("todos")
@@ -52,60 +56,31 @@ export function FunnelBoard() {
   const [showNewList, setShowNewList] = useState(false)
 
   const load = useCallback(async () => {
+    const version = ++sequence.current
     try {
-      setFunnel(await call("GET", "/api/crm/funnel"))
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Não consegui carregar o funil.")
-    }
-  }, [])
-
+      const params = new URLSearchParams({ q: search, step: stepFilter, source: sourceFilter, idle: onlyIdle ? "1" : "0", pages: JSON.stringify(pages) })
+      const data = await call("GET", `/api/crm/funnel?${params}`)
+      if (version !== sequence.current) return
+      setFunnel(data); setError(null)
+    } catch (e) { if (version === sequence.current) setError(e instanceof Error ? e.message : "Não consegui carregar o funil.") }
+  }, [search, stepFilter, sourceFilter, onlyIdle, pages])
+  const invalidate = useCallback(() => { sequence.current++ }, [])
   useEffect(() => {
-    load()
-  }, [load])
-
-  const matches = useCallback(
-    (c: FunnelCard) => {
-      const q = search.trim().toLowerCase()
-      if (q && !c.name.toLowerCase().includes(q) && !c.phone.includes(q.replace(/\D/g, "") || "§")) return false
-      if (stepFilter !== "todos" && c.nextStepState !== stepFilter) return false
-      if (onlyIdle && c.daysIdle < IDLE_DAYS) return false
-      if (sourceFilter === "sem" && c.source) return false
-      if (sourceFilter !== "todas" && sourceFilter !== "sem" && c.source !== sourceFilter) return false
-      return true
-    },
-    [search, stepFilter, onlyIdle, sourceFilter]
-  )
+    if (skipInitial.current) { skipInitial.current = false; return }
+    const timer = setTimeout(() => void load(), 250)
+    return () => { clearTimeout(timer); invalidate() }
+  }, [load, invalidate])
+  const changePage = (id: string, page: number) => setPages(old => ({ ...old, [id]: page }))
 
   async function moveCard(contactId: string, fromId: string | null, toId: string | null) {
     if (fromId === toId) return
 
-    // Atualiza a tela na hora; depois confere com o servidor.
-    setFunnel((prev) => {
-      if (!prev) return prev
-      const source = fromId ? prev.lists.find((l) => l.id === fromId) : null
-      const card = (source ? source.cards : prev.unassigned.cards).find((c) => c.id === contactId)
-      if (!card) return prev
-      const without = (cards: FunnelCard[]) => cards.filter((c) => c.id !== contactId)
-      return {
-        ...prev,
-        lists: prev.lists.map((l) => {
-          if (l.id === fromId) return { ...l, total: l.total - 1, cards: without(l.cards) }
-          if (l.id === toId) return { ...l, total: l.total + 1, cards: [card, ...without(l.cards)] }
-          return l
-        }),
-        unassigned: fromId
-          ? prev.unassigned
-          : { total: prev.unassigned.total - 1, cards: without(prev.unassigned.cards) },
-      }
-    })
-
     try {
       await call("POST", "/api/crm/funnel/move", { contactId, fromListId: fromId, toListId: toId })
+      await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não consegui mover.")
     }
-    await load()
   }
 
   function onDrop(colId: string | null) {
@@ -113,13 +88,6 @@ export function FunnelBoard() {
     setDrag(null)
     setOverCol(null)
   }
-
-  const visibleCount = useMemo(() => {
-    if (!funnel) return 0
-    const ids = new Set<string>()
-    for (const col of [...funnel.lists, funnel.unassigned]) col.cards.filter(matches).forEach((c) => ids.add(c.id))
-    return ids.size
-  }, [funnel, matches])
 
   if (!funnel) {
     return <p style={{ padding: 24, color: error ? "var(--danger)" : "var(--muted)" }}>{error ?? "Carregando o funil..."}</p>
@@ -145,7 +113,7 @@ export function FunnelBoard() {
         <div className="v-kpi">
           <div className="l">Contatos</div>
           <div className="n">{funnel.totals.contacts}</div>
-          <span className="v-pill mute">{filtering ? `${visibleCount} neste filtro` : "no funil"}</span>
+          <span className="v-pill mute">{filtering ? `${funnel.matched} neste filtro` : "no funil"}</span>
         </div>
         <div className="v-kpi">
           <div className="l">Em compras</div>
@@ -156,6 +124,11 @@ export function FunnelBoard() {
           <div className="l">A receber</div>
           <div className="n">{brl(funnel.charges.aReceber.total)}</div>
           <span className="v-pill wait">{funnel.charges.aReceber.count} {funnel.charges.aReceber.count === 1 ? "cobrança" : "cobranças"}</span>
+        </div>
+        <div className="v-kpi">
+          <div className="l">Em negociação (Pipeline)</div>
+          <div className="n">{brl(funnel.totals.pipelineValue ?? 0)}</div>
+          <span className="v-pill wait">{funnel.totals.openDealsCount ?? 0} {(funnel.totals.openDealsCount ?? 0) === 1 ? "oportunidade" : "oportunidades"}</span>
         </div>
         <div className="v-kpi">
           <div className="l">Vencidas</div>
@@ -170,18 +143,18 @@ export function FunnelBoard() {
           <Search size={16} style={{ color: "var(--muted)", flex: "none" }} />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setPages({}); setSearch(e.target.value) }}
             placeholder="Buscar por nome ou número"
             style={{ ...bare, flex: 1 }}
           />
         </div>
-        <select value={stepFilter} onChange={(e) => setStepFilter(e.target.value as StepFilter)} style={{ ...field, width: "auto" }}>
+        <select aria-label="Filtrar por próximo passo" value={stepFilter} onChange={(e) => { setPages({}); setStepFilter(e.target.value as StepFilter) }} style={{ ...field, width: "auto" }}>
           <option value="todos">Próximo passo: todos</option>
           <option value="atrasado">Atrasado</option>
           <option value="hoje">Para hoje</option>
           <option value="nenhum">Nenhum</option>
         </select>
-        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as SourceFilter)} style={{ ...field, width: "auto" }}>
+        <select aria-label="Filtrar por origem" value={sourceFilter} onChange={(e) => { setPages({}); setSourceFilter(e.target.value as SourceFilter) }} style={{ ...field, width: "auto" }}>
           <option value="todas">Origem: todas</option>
           {SOURCES.map((s) => (
             <option key={s} value={s}>{SOURCE_LABEL[s]}</option>
@@ -189,14 +162,14 @@ export function FunnelBoard() {
           <option value="sem">Sem origem</option>
         </select>
         <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6, color: "var(--text-2)" }}>
-          <input type="checkbox" checked={onlyIdle} onChange={(e) => setOnlyIdle(e.target.checked)} />
+          <input type="checkbox" checked={onlyIdle} onChange={(e) => { setPages({}); setOnlyIdle(e.target.checked) }} />
           Paradas ({IDLE_DAYS}+ dias)
         </label>
       </div>
 
-      {error && <p style={errorText}>{error}</p>}
+      {error && <p role="alert" style={errorText}>{error}</p>}
       {funnel.truncated && (
-        <p style={{ color: "var(--wait)", fontSize: 12, margin: 0 }}>Mostrando só os 2000 contatos mais recentes.</p>
+        <p style={{ color: "var(--wait)", fontSize: 12, margin: 0 }}>Cada coluna mostra até 100 contatos por página. Use Anterior/Próxima para continuar.</p>
       )}
 
       {showNewList && (
@@ -227,11 +200,15 @@ export function FunnelBoard() {
       {/* Quadro */}
       <div style={{ display: "flex", gap: 14, alignItems: "flex-start", overflowX: "auto", paddingBottom: 16 }}>
         <Column
+          page={funnel.pages.__none ?? 1}
+          onPage={page => changePage("__none", page)}
+          destinations={funnel.lists}
+          onMove={(id, to) => moveCard(id, null, to)}
           id={null}
           name="Sem lista"
           color="var(--muted)"
           total={funnel.unassigned.total}
-          cards={funnel.unassigned.cards.filter(matches)}
+          cards={funnel.unassigned.cards}
           over={overCol === "__none"}
           onOver={() => setOverCol("__none")}
           onDrop={() => onDrop(null)}
@@ -244,11 +221,15 @@ export function FunnelBoard() {
         {funnel.lists.map((l) => (
           <Column
             key={l.id}
+            page={funnel.pages[l.id] ?? 1}
+            onPage={page => changePage(l.id, page)}
+            destinations={funnel.lists}
+            onMove={(id, to) => moveCard(id, l.id, to)}
             id={l.id}
             name={l.name}
             color={l.color}
             total={l.total}
-            cards={l.cards.filter(matches)}
+            cards={l.cards}
             over={overCol === l.id}
             onOver={() => setOverCol(l.id)}
             onDrop={() => onDrop(l.id)}
@@ -278,6 +259,10 @@ export function FunnelBoard() {
 /* ───────────── Coluna ───────────── */
 
 type ColumnProps = {
+  page: number
+  onPage: (page: number) => void
+  destinations: { id: string; name: string }[]
+  onMove: (id: string, to: string | null) => Promise<void>
   id: string | null
   name: string
   color: string
@@ -351,6 +336,11 @@ function Column(p: ColumnProps) {
           </strong>
         )}
         <span style={{ fontSize: 12, color: "var(--muted)" }}>{p.total}</span>
+        {p.cards.some((c) => (c.dealValue ?? 0) > 0) && (
+          <span style={{ ...chip("wait"), fontSize: 10.5, padding: "2px 7px" }} title="Total em negociação nesta coluna">
+            {brl(p.cards.reduce((sum, c) => sum + (c.dealValue ?? 0), 0))}
+          </span>
+        )}
         {p.onAddContact && (
           <button onClick={p.onAddContact} title="Adicionar contato nesta lista" aria-label="Adicionar contato nesta lista" style={{ ...iconBtn, color: "var(--vred)" }}>
             <Plus size={17} />
@@ -376,6 +366,9 @@ function Column(p: ColumnProps) {
           <CardView
             key={c.id}
             card={c}
+            destinations={p.destinations.filter(l => l.id !== p.id)}
+            canUnassign={p.id !== null}
+            onMove={to => p.onMove(c.id, to)}
             onDragStart={() => p.onDragStart(c.id)}
             onDragEnd={p.onDragEnd}
             onChanged={p.onChanged}
@@ -388,11 +381,11 @@ function Column(p: ColumnProps) {
             {p.total > 0 ? "Nenhum card neste filtro" : "Arraste contatos pra cá"}
           </p>
         )}
-        {p.total > p.cards.length && p.cards.length > 0 && (
-          <p style={{ fontSize: 11, color: "var(--faint)", textAlign: "center", margin: 0 }}>
-            +{p.total - p.cards.length} não exibidos
-          </p>
-        )}
+        {p.total > 100 && <div className="vs-actions" aria-label={`Paginação de ${p.name}`}>
+          <button style={ghostSm} disabled={p.page === 1} onClick={() => p.onPage(p.page - 1)}>Anterior</button>
+          <span>{p.page} / {Math.ceil(p.total / 100)}</span>
+          <button style={ghostSm} disabled={p.page * 100 >= p.total} onClick={() => p.onPage(p.page + 1)}>Próxima</button>
+        </div>}
       </div>
     </div>
   )
@@ -401,8 +394,11 @@ function Column(p: ColumnProps) {
 /* ───────────── Card ───────────── */
 
 function CardView({
-  card: c, onDragStart, onDragEnd, onChanged, onError, onOpen,
+  card: c, onDragStart, onDragEnd, onChanged, onError, onOpen, destinations, canUnassign, onMove,
 }: {
+  destinations: { id: string; name: string }[]
+  canUnassign: boolean
+  onMove: (to: string | null) => Promise<void>
   card: FunnelCard
   onDragStart: () => void
   onDragEnd: () => void
@@ -484,13 +480,13 @@ function CardView({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <strong
+        <button type="button"
           onClick={onOpen}
           title="Abrir dados, notas e histórico"
-          style={{ fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: "var(--strong)" }}
+          style={{ background: "none", border: 0, padding: 0, fontWeight: 700, textAlign: "left", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", color: "var(--strong)" }}
         >
           {c.name}
-        </strong>
+        </button>
         <a
           href={`https://wa.me/${withCountryCode(c.phone)}`}
           target="_blank"
@@ -502,6 +498,13 @@ function CardView({
           <MessageSquare size={13} />Abrir conversa
         </a>
       </div>
+      <label style={{ fontSize: 12, color: "var(--muted)" }}>Mover para
+        <select style={field} value="" disabled={busy} onChange={e => { const to = e.target.value; if (to) void run(() => onMove(to === "__none" ? null : to)) }}>
+          <option value="">Selecione uma lista</option>
+          {canUnassign && <option value="__none">Sem lista</option>}
+          {destinations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
+      </label>
       <div style={{ fontSize: 12, color: "var(--muted)", margin: "2px 0 6px" }}>
         {c.phone}
         {c.notesCount > 0 && (
@@ -516,6 +519,11 @@ function CardView({
           ? `${brl(c.totalSpent)} · ${c.purchases} ${c.purchases === 1 ? "compra" : "compras"}`
           : "Sem compras ainda"}
       </div>
+      {(c.dealValue ?? 0) > 0 && (
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--wait)", marginTop: 3 }}>
+          Negócio: {c.dealTitle ? `${c.dealTitle} · ` : ""}{brl(c.dealValue!)}
+        </div>
+      )}
 
       {(sourceLabel(c.source) || due1 || c.nextStepState !== "nenhum") && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>

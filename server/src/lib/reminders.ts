@@ -9,6 +9,7 @@ export type ReminderView = {
   contactName: string
   contactPhone: string
   text: string
+  scheduledMessage: string | null
   dueAt: string // ISO
   doneAt: string | null
   snoozeCount: number // quantas vezes foi adiado ("Adiadas")
@@ -43,6 +44,7 @@ export async function listReminders(userId: string, opts: { contactId?: string; 
     contactName: r.contact.name,
     contactPhone: r.contact.phone,
     text: r.text,
+    scheduledMessage: r.scheduledMessage ?? null,
     dueAt: r.dueAt.toISOString(),
     doneAt: r.doneAt?.toISOString() ?? null,
     snoozeCount: r.snoozeCount,

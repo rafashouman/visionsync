@@ -116,6 +116,8 @@
     } catch { return null }
   }
 
+  const TYPE_LABEL = { ptt: "Mensagem de voz", audio: "Mensagem de voz", image: "Foto", video: "Vídeo", sticker: "Figurinha", document: "Documento", location: "Localização", vcard: "Contato", gif: "GIF" }
+
   function scan() {
     const dbg = { versao: "scan1" }
     const labelsOut = []
@@ -165,9 +167,15 @@
         const lastFromMe = last && last.id ? !!last.id.fromMe : null
         const name = String(chat.formattedTitle || chat.name || (chat.contact && (chat.contact.name || chat.contact.pushname)) || "").trim()
         const myLabels = new Set([...(labelsOfChat.get(serial(id)) || [])])
+        const type = last ? String(last.type || "chat") : "chat"
+        let preview = TYPE_LABEL[type] || ""
+        if (!preview && last) preview = String(last.body || last.caption || "").replace(/\s+/g, " ").slice(0, 60)
         chatsOut.push({
+          key: serial(id),
           phone,
           name: name && !/^[+\d\s()-]+$/.test(name) ? name : "",
+          pic: picOf(chat, C),
+          preview,
           labels: [...myLabels],
           unread: typeof chat.unreadCount === "number" ? Math.max(0, chat.unreadCount) : 0,
           archived: !!chat.archive,
@@ -199,8 +207,6 @@
   }
 
   // ── Quem está esperando resposta (a última mensagem é da cliente) ──
-  const TYPE_LABEL = { ptt: "Mensagem de voz", audio: "Mensagem de voz", image: "Foto", video: "Vídeo", sticker: "Figurinha", document: "Documento", location: "Localização", vcard: "Contato", gif: "GIF" }
-
   function waiting(minMinutes, maxHours) {
     const dbg = { versao: "wait1" }
     const out = []
@@ -239,24 +245,85 @@
     return { waiting: out.slice(0, 30), dbg }
   }
 
-  // ── Abrir uma conversa pelo id ──
+  // ── Abrir uma conversa pelo id ou pelo telefone (mesmo sem estar salvo) ──
+  function samePhoneDigits(a, b) {
+    const da = String(a || "").replace(/\D/g, "")
+    const db = String(b || "").replace(/\D/g, "")
+    if (!da || !db) return false
+    if (da === db) return true
+    const na = da.startsWith("55") && da.length >= 12 ? da.slice(2) : da
+    const nb = db.startsWith("55") && db.length >= 12 ? db.slice(2) : db
+    if (na === nb) return true
+    // Compara DDD + últimos 8 dígitos (caso de 9º dígito no Brasil)
+    if (na.length >= 10 && nb.length >= 10 && na.slice(0, 2) === nb.slice(0, 2) && na.slice(-8) === nb.slice(-8)) return true
+    return false
+  }
+
+  function triggerOpenChat(chat, dbg) {
+    for (const mod of ["WAWebCmd", "WAWebCmdCollection"]) {
+      const M = req(mod)
+      const Cmd = M && (M.Cmd || M)
+      dbg["mod_" + mod] = !!Cmd
+      if (!Cmd) continue
+      for (const fn of ["openChatAt", "openChatBottom", "openChatFromUnread"]) {
+        if (typeof Cmd[fn] === "function") {
+          try { Cmd[fn](chat); dbg.via = mod + "." + fn; return { opened: true, dbg } } catch (e) { dbg["erro_" + fn] = String(e).slice(0, 80) }
+        }
+      }
+    }
+    return { opened: false, dbg }
+  }
+
   function openChat(key) {
-    const dbg = { versao: "open1" }
+    const dbg = { versao: "open2" }
     try {
       const C = collections()
-      const chat = C && arr(C.Chat).find((c) => c && c.id && serial(c.id) === key)
-      dbg.achouChat = !!chat
-      if (!chat) return { opened: false, dbg }
-      for (const mod of ["WAWebCmd", "WAWebCmdCollection"]) {
-        const M = req(mod)
-        const Cmd = M && (M.Cmd || M)
-        dbg["mod_" + mod] = !!Cmd
-        if (!Cmd) continue
-        for (const fn of ["openChatAt", "openChatBottom", "openChatFromUnread"]) {
-          if (typeof Cmd[fn] === "function") {
-            try { Cmd[fn](chat); dbg.via = mod + "." + fn; return { opened: true, dbg } } catch (e) { dbg["erro_" + fn] = String(e).slice(0, 80) }
-          }
+      const allChats = (C && arr(C.Chat)) || []
+      let chat = allChats.find((c) => c && c.id && serial(c.id) === key)
+      if (!chat) {
+        const wantDigits = String(key || "").replace(/\D/g, "")
+        if (wantDigits.length >= 8) {
+          chat = allChats.find((c) => {
+            if (!c || !c.id || c.isGroup) return false
+            if (samePhoneDigits(c.id.user, wantDigits)) return true
+            const p = phoneFromChat(c, {})
+            return p && p !== "GROUP" && samePhoneDigits(p, wantDigits)
+          })
         }
+      }
+      dbg.achouChat = !!chat
+      if (chat) return triggerOpenChat(chat, dbg)
+
+      // Se a conversa ainda não existe na lista, tenta criar/abrir pelo número (Click-to-Chat do HotZapp)
+      const digits = String(key || "").replace(/\D/g, "")
+      if (digits.length >= 10) {
+        const fullDigits = digits.length <= 11 && !digits.startsWith("55") ? "55" + digits : digits
+        try {
+          const WidFactory = req("WAWebWidFactory")
+          const FindChat = req("WAWebFindChatAction") || req("WAWebChatCollection")
+          if (WidFactory && typeof WidFactory.createWid === "function") {
+            const wid = WidFactory.createWid(fullDigits + "@c.us")
+            if (FindChat && typeof FindChat.findOrCreateLatestChat === "function") {
+              Promise.resolve(FindChat.findOrCreateLatestChat(wid)).then((created) => {
+                if (created) triggerOpenChat(created, {})
+              }).catch(() => {})
+              dbg.via = "findOrCreateLatestChat"
+              return { opened: true, dbg }
+            }
+          }
+        } catch (e) { dbg.erroWid = String(e).slice(0, 80) }
+
+        // Fallback via link interno do WhatsApp Web (abre sem recarregar a aba quando interceptado pelo router)
+        try {
+          const a = document.createElement("a")
+          a.href = `https://api.whatsapp.com/send?phone=${fullDigits}`
+          a.style.display = "none"
+          document.body.appendChild(a)
+          a.click()
+          setTimeout(() => a.remove(), 200)
+          dbg.via = "link_api_whatsapp"
+          return { opened: true, dbg }
+        } catch (e) { dbg.erroLink = String(e).slice(0, 80) }
       }
     } catch (e) { dbg.erro = String(e).slice(0, 120) }
     return { opened: false, dbg }

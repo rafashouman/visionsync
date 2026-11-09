@@ -8,10 +8,13 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "db:local": "tsx scripts/local-mongo.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:indexes": "tsx scripts/indexes.ts",
-    "test": "tsx --test tests/*.test.ts"
+    "db:migrate:legacy": "tsx scripts/migrate-legacy-postgres.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "db:prepare": "tsx scripts/local-mongo.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
@@ -26,12 +29,14 @@
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/pg": "^8.15.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^16.4.5",
     "mongodb": "^6.21.0",
     "mongodb-memory-server": "^10.3.0",
+    "pg": "^8.16.3",
     "prisma": "6.19.0",
     "tsx": "^4.20.6",
     "typescript": "^5"

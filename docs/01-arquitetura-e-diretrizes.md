@@ -1,18 +1,41 @@
 # Documento 1 — Arquitetura e Diretrizes de Desenvolvimento
 
-Versão de revisão: 1.2 · 9 de novembro de 2026 · Base: `C:\@sites\visionsync`.
+Versão de revisão: 1.3 · 9 de novembro de 2026 · Base: `C:\@sites\visionsync`.
 
 Atualização após a primeira implementação: frontend e plugin foram evoluídos e a persistência foi adaptada ao MongoDB, mantendo temporariamente Prisma 6.19 para compatibilidade dos módulos existentes. O inventário da seção 1 descreve o protótipo anterior; o restante é a especificação de destino. Consulte [estado da implementação](03-estado-da-implementacao.md) para distinguir entregue e pendente.
 
 Decisão do usuário nesta revisão: Next.js e MongoDB são a stack de destino; TypeScript tem preferência. JavaScript é permitido quando trouxer vantagem concreta. Outras tecnologias só entram quando forem realmente necessárias, com justificativa.
 
-Este documento substitui a proposta arquitetural fornecida na conversa de origem como **especificação proposta para a próxima implementação**. Não declara funcionalidades futuras como prontas. Nenhum código foi alterado nesta revisão. As decisões propostas devem orientar a implementação quando ela for solicitada.
+Este documento mantém a especificação de destino e registra entregas incrementais. A revisão 1.3 inclui implementação autorizada de arquitetura, UX, acessibilidade e desempenho; não declara o MVP completo nem integrações futuras como prontas. As constatações do protótipo abaixo são históricas, anteriores às entregas MongoDB.
+
+## Estado atual — revisão 1.3
+
+Fonte: código em `C:/@sites/visionsync`, após as melhorias autorizadas de 09/11/2026. Os documentos do NexuSync AI Studio são de outro produto e não foram alterados.
+
+| Área | Implementação atual | Limite preservado |
+|---|---|---|
+| Stack | Next.js 16.4.5, App Router, React 19.2.4, TypeScript estrito, MongoDB via Prisma 6.19 | Driver direto continua no backlog; nenhuma atualização de ORM presumida |
+| Interface | CSS próprio, tokens e estilos compartilhados; tema preservado | Sem Tailwind/Zustand novos; refatoração geral não é requisito desta entrega |
+| Leituras | `lib/contacts.ts` centraliza paginação por cursor; funil filtra e pagina cada coluna no banco; resumo de cobranças separado da listagem | Paginação por deslocamento em colunas/cobranças pode se deslocar durante alterações concorrentes; busca parcial ainda precisa avaliação de índices com carga real |
+| Indicadores | Totais globais separados de páginas; histórico paginado com estatísticas agregadas | Não representam BI/Ads nem validação contábil de legado |
+| App Router | Dados iniciais autenticados de contatos/funil no servidor; cliente mantém interação; loading/error no dashboard; ficha sob demanda | Não adicionada cache compartilhada de dados pessoais; fallback local preserva o acionador da ficha |
+| Acessibilidade | Diálogo/foco/abas/rótulos, atalho ao conteúdo e seletor para mover cards | Sem declaração de conformidade WCAG integral; demais modais e telas ainda requerem auditoria completa |
+| Segurança | Login/cadastro limitados por contadores atômicos MongoDB; TTL explícito nos índices | Não substitui revisão de CSRF, proteção de API pública futura nem controle de permissões do roadmap |
+| Desenvolvimento | `dev` não prepara banco; `db:prepare` explícito cria infraestrutura/schema/índices; demonstração somente pelo script temporário | Nenhuma base real foi migrada ou semeada nesta revisão |
+
+Contratos compatíveis: contatos sem `paginate=1` continuam como array; com paginação retornam `items/nextCursor`. Funil aceita `q`, `step`, `source`, `idle` e `pages` (mapa de ID da coluna para página; `__none` representa Sem lista). Cada coluna retorna 100 cards; cobranças aceitam `page` e retornam `total/page/hasMore`; ficha aceita `purchasePage` e retorna `purchasePage/purchaseHasMore` no resumo CRM. Sessão/Bearer continuam delimitando a conta no servidor.
+
+Os índices novos são instalados por `db:indexes`/`db:prepare`: cursor composto de contatos, ordenação de cobranças e expiração de `auth_attempts`. O limiter usa SHA-256 da chave de tentativa, janela fixa e atualização atômica; expiração lógica independe do momento em que o TTL remove o registro. Não contém email bruto nem depende de cabeçalhos de IP. A limpeza é apenas dos contadores temporários da própria funcionalidade.
+
+Dinheiro: mantida compatibilidade com `amount`; novas cobranças validam duas casas e limite seguro; soma global de cobranças converte cada valor a centavos. Novas compras já guardam `amountMinor`. Moeda e centavos são gravados nas novas cobranças; backfill e remoção de Float não foram feitos automaticamente.
+
+Verificação reproduzida: tipos, lint, build e regressões de MongoDB isolado. Consulte [estado da implementação](03-estado-da-implementacao.md) para as verificações no navegador e pendências.
 
 ## 1. Evidências e limites da análise
 
 Foram recuperados os dois documentos originais da conversa `6af1e9b3-0b9c-83e8-9190-cb3bc3091341` e consultado o Agent Operating Guide 0.0.6. A análise foi estática: arquivos de configuração, schema, rotas, bibliotecas e scripts da extensão. Não foram executados aplicação, migrations, build ou testes; não houve acesso ao banco, ERP, conta Meta ou WhatsApp real. As afirmações do README sobre testes simulados são histórico declarado pelo projeto, não testes reproduzidos nesta revisão.
 
-### 1.1 Inventário confirmado no código
+### 1.1 Inventário histórico do protótipo original
 
 | Área | Estado observado | Evidência relativa à raiz do protótipo |
 |---|---|---|
@@ -30,7 +53,7 @@ Foram recuperados os dois documentos originais da conversa `6af1e9b3-0b9c-83e8-9
 
 O README tem trechos incompatíveis entre si: afirma que atalhos/respostas na extensão ainda não existem e depois descreve sua implementação. `content.js` contém barra, atalhos e ações. O código prevalece para existência; funcionamento real ainda exige homologação. A nomenclatura também mistura Vision CRM, tarot-crm e NexuSync: manter `visionsync` como identificação técnica até decisão de marca.
 
-### 1.2 Lacunas prioritárias
+### 1.2 Lacunas identificadas no protótipo original (histórico)
 
 1. `findContactByPhone` compara últimos oito dígitos; pessoas de DDDs/países diferentes podem ser unidas. O índice `(userId, phone)` não é único.
 2. Compra manual cria um novo registro em cada POST; o ID da compra ajuda no reenvio à Meta, mas não impede duplicação na entrada. A baixa de cobrança já tem proteção transacional PENDING→PAID e vínculo único com Purchase; preservar essa proteção.
@@ -39,13 +62,13 @@ O README tem trechos incompatíveis entre si: afirma que atalhos/respostas na ex
 5. API token em texto no banco e no armazenamento local da extensão; sem modelo de expiração/escopo por instalação no schema.
 6. Permissão `https://*.vercel.app/*` ampla; bridge por eventos DOM e módulos internos do WhatsApp são fronteiras não confiáveis.
 7. Cliente pg usa `ssl: { rejectUnauthorized: false }`; exigir validação de certificado no ambiente de produção.
-8. Kanban lê até 2.000 contatos e 100 cards por coluna; cobrança lê até 500 registros. Totais dessas telas podem ser parciais: não usá-los como fechamento financeiro.
+8. Corrigido na revisão 1.3: limites globais substituídos por paginação e totais globais independentes. Permanecem futuras a conciliação do legado e a avaliação de desempenho com carga real.
 
 ## 2. Decisões de arquitetura propostas
 
 ### 2.1 Evoluir a base existente
 
-Adotar **Next.js (App Router) + TypeScript + MongoDB** como stack de destino. PostgreSQL/Prisma descrevem somente o protótipo atual e serão substituídos na camada de persistência. Reaproveitar UI, regras de negócio, contratos e autenticação compatíveis, adaptando os acessos ao banco. A migração faz parte do trabalho futuro; não foi executada nesta revisão.
+Adotar **Next.js (App Router) + TypeScript + MongoDB** como stack de destino. PostgreSQL e Prisma 7 descrevem o protótipo de origem. A aplicação atual usa MongoDB com Prisma 6.19; a substituição dessa camada pelo driver oficial continua proposta. Reaproveitar UI, regras de negócio, contratos e autenticação compatíveis, adaptando os acessos ao banco. A migração faz parte do trabalho futuro; não foi executada nesta revisão.
 
 TypeScript é o padrão para código novo e alterações substanciais, incluindo extensão e integrações. JavaScript é permitido quando houver benefício concreto de compatibilidade, simplicidade ou ferramentas, documentado no módulo. Os arquivos JavaScript distribuídos pela extensão podem ser gerados a partir de TypeScript; isso não exige React. Preservar JavaScript legado enquanto sua conversão não trouxer benefício proporcional.
 
@@ -281,3 +304,7 @@ Aceite de APIs externas não comprova atribuição. EMQ, elegibilidade a otimiza
 ## 12. Fontes e pendências de validação externa
 
 Fontes primárias consultadas em 09/11/2026: Chrome lifecycle/código remoto, WhatsApp Business Terms, LGPD e ANPD, vinculadas nas seções acima. As páginas oficiais da Meta sobre [deduplicação](https://developers.facebook.com/docs/marketing-api/conversions-api/deduplicate-pixel-and-server-events) e [fbp/fbc](https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/fbp-and-fbc/) responderam 429 na consulta; os contratos propostos devem ser conferidos nelas na implementação. Não foi possível homologar nesta análise versão Graph, janela temporal, suporte a eventos de qualificação ou compatibilidade de ctwa_clid com o destino usado. Esses pontos são bloqueios de produção, não motivo para alterar os fatos históricos ou fabricar campos.
+
+### Compatibilidade financeira da revisão 1.3
+
+Novas cobranças passam a gravar `amountMinor` (centavos inteiros) e `currency=BRL`. Na baixa, a compra usa esses mesmos centavos/moeda. A leitura e os resumos preferem centavos; registros legados sem esse campo continuam lidos por `amount`, preservado para compatibilidade. Nenhum histórico foi reescrito. Campos novos são aditivos; gerar o cliente faz parte do build. Backfill com reconciliação do legado e remoção futura de Float permanecem separados desta entrega, assim como estornos e demais estados financeiros do roadmap.

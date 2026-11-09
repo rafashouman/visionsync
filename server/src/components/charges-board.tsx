@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { HandCoins, MessageSquare, Plus } from "lucide-react"
 import type { ChargeFilter, ChargeState, ChargeSummary, ChargeView } from "@/lib/charges"
 import { buildChargeMessage, whatsappLink } from "@/lib/charge-message"
@@ -41,6 +41,9 @@ async function call(method: string, url: string, body?: unknown) {
 }
 
 export function ChargesBoard() {
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const request = useRef(0)
   const [tab, setTab] = useState<ChargeFilter>("todas")
   const [charges, setCharges] = useState<ChargeView[] | null>(null)
   const [summary, setSummary] = useState<ChargeSummary | null>(null)
@@ -49,18 +52,22 @@ export function ChargesBoard() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async (filter: ChargeFilter) => {
+    const version = ++request.current
     try {
-      const d = await call("GET", `/api/crm/charges?status=${filter}`)
+      const d = await call("GET", `/api/crm/charges?status=${filter}&page=${page}`)
+      if (version !== request.current) return
+      setHasMore(d.hasMore)
       setCharges(d.charges)
       setSummary(d.summary)
       setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Não consegui carregar as cobranças.")
+      if (version === request.current) setError(e instanceof Error ? e.message : "Não consegui carregar as cobranças.")
     }
-  }, [])
+  }, [page])
 
   useEffect(() => {
-    load(tab)
+    const task = setTimeout(() => void load(tab), 0)
+    return () => clearTimeout(task)
   }, [tab, load])
 
   async function act(c: ChargeView, action: "pay" | "cancel") {
@@ -109,7 +116,7 @@ export function ChargesBoard() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => { setPage(1); setTab(t.id) }}
             style={{
               padding: "7px 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: "pointer",
               border: `1px solid ${tab === t.id ? "transparent" : "var(--soft)"}`,
@@ -123,7 +130,8 @@ export function ChargesBoard() {
         ))}
       </div>
 
-      {error && <p style={{ ...errorText, margin: 0 }}>{error}</p>}
+      <div className="vs-actions" aria-label="Paginação de cobranças"><button style={ghostSm} disabled={page === 1} onClick={() => setPage(p => p - 1)}>Anterior</button><span>Página {page}</span><button style={ghostSm} disabled={!hasMore} onClick={() => setPage(p => p + 1)}>Próxima</button></div>
+      {error && <p role="alert" style={{ ...errorText, margin: 0 }}>{error}</p>}
 
       <div style={{ ...card, padding: 6 }}>
         {charges === null ? (

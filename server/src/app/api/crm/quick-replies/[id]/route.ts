@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (d.favorite !== undefined) data.favorite = d.favorite
 
   if (d.text !== undefined) {
-    if (current.type === "TEXT") {
+    if (current.type === "TEXT" || current.type === "SEQUENCE") {
       const t = textField.safeParse(d.text)
       if (!t.success) return NextResponse.json({ error: firstIssue(t.error) }, { status: 400 })
       data.text = t.data

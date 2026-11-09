@@ -15,8 +15,12 @@ export default function ConfiguracoesPage() {
   const [error, setError] = useState("")
 
   useEffect(() => {
-    fetch("/api/crm/token").then((r) => r.json()).then((d) => setConfigured(Boolean(d.configured))).catch(() => setError("Não foi possível consultar a conexão."))
-    if (typeof window !== "undefined") setApiUrl(window.location.origin)
+    fetch("/api/crm/token").then((r) => {
+      if (!r.ok) throw new Error("Não foi possível consultar a conexão.")
+      return r.json()
+    }).then((d) => setConfigured(Boolean(d.configured))).catch(() => setError("Não foi possível consultar a conexão."))
+    const task = requestAnimationFrame(() => setApiUrl(window.location.origin))
+    return () => cancelAnimationFrame(task)
   }, [])
 
   async function generate() {
@@ -45,11 +49,15 @@ export default function ConfiguracoesPage() {
     finally { setLoading(false) }
   }
 
-  function copy() {
+  async function copy() {
     if (!token) return
-    navigator.clipboard.writeText(token)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(token)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError("Não foi possível copiar. Selecione o token e copie manualmente.")
+    }
   }
 
   return (

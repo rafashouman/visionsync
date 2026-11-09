@@ -27,21 +27,31 @@ export default function CadastroPage() {
     }
 
     setLoading(true)
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    })
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError(d.error || "Erro ao cadastrar.")
+    let created = false
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error || "Erro ao cadastrar.")
+        return
+      }
+      created = true
+      const result = await signIn("credentials", { email, password, redirect: false })
+      if (!result?.ok || result.error) {
+        setError("Conta criada, mas não foi possível entrar automaticamente. Acesse pela tela de login.")
+        return
+      }
+      router.push("/dashboard")
+      router.refresh()
+    } catch {
+      setError(created ? "Conta criada, mas não foi possível entrar automaticamente. Acesse pela tela de login." : "Não foi possível conectar ao servidor. Tente novamente.")
+    } finally {
       setLoading(false)
-      return
     }
-    await signIn("credentials", { email, password, redirect: false })
-    setLoading(false)
-    router.push("/dashboard")
-    router.refresh()
   }
 
   return (
@@ -61,7 +71,7 @@ export default function CadastroPage() {
         {error && <p className="auth-error">{error}</p>}
         <button className="auth-btn" disabled={loading || mismatch}>{loading ? "Criando..." : "Criar conta"}</button>
         <p className="auth-foot">
-          Já tem conta? <Link href="/login">Entrar</Link>
+          Já tem conta ou acabou de criar? <Link href="/login">Entrar</Link>
         </p>
       </form>
     </div>

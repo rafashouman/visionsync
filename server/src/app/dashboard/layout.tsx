@@ -7,8 +7,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session?.user?.id) redirect("/login")
   return (
     <div className="v-shell">
+      <a className="vs-skip" href="#main-content">Pular para o conteúdo</a>
       <DashNav />
-      <main className="v-main">{children}</main>
+      <main id="main-content" tabIndex={-1} className="v-main">{children}</main>
     </div>
   )
 }

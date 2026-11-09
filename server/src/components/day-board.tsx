@@ -9,6 +9,7 @@ import { card, chip, errorText } from "@/lib/ui"
 type Day = {
   compras: { hoje: { count: number; total: number }; semana: { count: number; total: number } }
   contatosNovos: number
+  totalContatos: number
   lembretes: { atrasados: number; hoje: number; lista: { id: string; contactName: string; text: string; dueAt: string; state: string }[] }
   cobrancas: { vencidas: { count: number; total: number }; hoje: { count: number; total: number }; aReceber: { count: number; total: number } }
   meta: { pendentes: number; falhas: number; semPixel: number }
@@ -63,6 +64,19 @@ export function DayBoard() {
     <>
       <PageHeader title="Painel do dia" subtitle="O que precisa da sua atenção hoje, num lugar só." />
       {err && <p style={errorText}>{err}</p>}
+
+      {d?.totalContatos === 0 && (
+        <section style={{ ...card, padding: "20px" }}>
+          <h2 style={{ color: "var(--strong)", fontSize: 18, margin: "0 0 8px" }}>Comece pelo seu primeiro contato</h2>
+          <p style={{ color: "var(--muted)", fontSize: 13, margin: "0 0 12px" }}>
+            Cadastre um contato no painel ou instale o plugin para trabalhar junto ao WhatsApp Web.
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 14 }}>
+            <Link href="/dashboard/contatos">Cadastrar contato <ArrowRight size={14} /></Link>
+            <Link href="/dashboard/extensao">Instalar plugin <ArrowRight size={14} /></Link>
+          </div>
+        </section>
+      )}
 
       <div className="v-card v-kpis">
         <div className="v-kpi"><div className="l">Vendas hoje</div><div className="n">{d ? brl(d.compras.hoje.total) : "…"}</div><span className="v-pill ok">{d ? `${d.compras.hoje.count} compras` : ""}</span></div>

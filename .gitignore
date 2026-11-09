@@ -10,4 +10,5 @@ extension/dist/
 coverage/
 *.log
 .vercel/
+.mongodb-data/
 *.zip
