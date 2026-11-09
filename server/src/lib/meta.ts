@@ -108,6 +108,7 @@ export type SendResult = {
 
 /** Envia uma compra ao Meta e grava o resultado na própria compra. */
 export async function sendPurchaseEvent(purchaseId: string): Promise<SendResult> {
+  if (process.env.META_SEND_ENABLED !== "true") return { status: "skipped", message: "Envio Meta desativado neste ambiente" }
   const purchase = await prisma.purchase.findUnique({
     where: { id: purchaseId },
     include: { contact: true },

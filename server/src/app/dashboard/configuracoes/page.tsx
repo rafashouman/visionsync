@@ -11,21 +11,38 @@ export default function ConfiguracoesPage() {
   const [apiUrl, setApiUrl] = useState("")
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [configured, setConfigured] = useState(false)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    fetch("/api/crm/token").then((r) => r.json()).then((d) => setToken(d.token ?? null)).catch(() => {})
+    fetch("/api/crm/token").then((r) => r.json()).then((d) => setConfigured(Boolean(d.configured))).catch(() => setError("Não foi possível consultar a conexão."))
     if (typeof window !== "undefined") setApiUrl(window.location.origin)
   }, [])
 
   async function generate() {
     setLoading(true)
+    setError("")
     try {
       const res = await fetch("/api/crm/token", { method: "POST" })
       const d = await res.json()
+      if (!res.ok) throw new Error(d.error || "Não foi possível gerar o token.")
       setToken(d.token ?? null)
+      setConfigured(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível gerar o token.")
     } finally {
       setLoading(false)
     }
+  }
+
+  async function revoke() {
+    setLoading(true); setError("")
+    try {
+      const res = await fetch("/api/crm/token", { method: "DELETE" })
+      if (!res.ok) throw new Error("Não foi possível revogar o token.")
+      setToken(null); setConfigured(false)
+    } catch (err) { setError(err instanceof Error ? err.message : "Falha de conexão.") }
+    finally { setLoading(false) }
   }
 
   function copy() {
@@ -59,16 +76,18 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: "var(--faint)", fontStyle: "italic" }}>Nenhum token gerado ainda.</p>
+          <p style={{ fontSize: 13, color: "var(--muted)" }}>{configured ? "Já existe um token ativo. Gere outro se precisar reconectar o plugin." : "Gere um token para conectar o plugin."}</p>
         )}
         <p style={{ fontSize: 12, color: "var(--wait)", marginTop: 6 }}>
-          Guarde em segredo. Quem tiver este token acessa seus dados.
+          Copie agora: o token só aparece uma vez e vence em 90 dias. Gerar outro invalida o anterior.
         </p>
 
         <button onClick={generate} disabled={loading} style={{ ...btn, marginTop: 10, opacity: loading ? 0.6 : 1 }}>
           <RefreshCw size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
-          {loading ? "Gerando..." : token ? "Gerar novo token" : "Gerar token"}
+          {loading ? "Aguarde..." : configured ? "Gerar novo token" : "Gerar token"}
         </button>
+        {configured && <button onClick={revoke} disabled={loading} style={{ ...btn, marginLeft: 8 }}>Desconectar plugin</button>}
+        {error && <p role="alert" style={{ color: "var(--danger)" }}>{error}</p>}
       </div>
 
       <MetaCard />

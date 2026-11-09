@@ -53,10 +53,10 @@ export default function CadastroPage() {
         <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
         <label className="auth-label">Email</label>
         <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-        <label className="auth-label">Senha (mínimo 6 caracteres)</label>
-        <PasswordInput variant="dark" value={password} onChange={setPassword} minLength={6} autoComplete="new-password" />
+        <label className="auth-label">Senha (mínimo 10 caracteres)</label>
+        <PasswordInput variant="dark" value={password} onChange={setPassword} minLength={10} autoComplete="new-password" />
         <label className="auth-label">Confirmar senha</label>
-        <PasswordInput variant="dark" value={confirm} onChange={setConfirm} minLength={6} autoComplete="new-password" />
+        <PasswordInput variant="dark" value={confirm} onChange={setConfirm} minLength={10} autoComplete="new-password" />
         {mismatch && <p className="auth-error" style={{ fontSize: 12, marginTop: 6 }}>As senhas não são iguais.</p>}
         {error && <p className="auth-error">{error}</p>}
         <button className="auth-btn" disabled={loading || mismatch}>{loading ? "Criando..." : "Criar conta"}</button>

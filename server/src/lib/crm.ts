@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { withCountryCode } from "@/lib/phone"
 import { normalizePhone } from "@/lib/crm-auth"
 
 export type CrmListTag = { id: string; name: string; color: string }
@@ -31,16 +32,11 @@ export type CrmContact = {
   purchases: CrmPurchase[]
 }
 
-/** Procura o contato pelo telefone (comparando últimos 8 dígitos). */
+/** Match the complete international phone, scoped to the account. */
 export async function findContactByPhone(userId: string, phone: string) {
-  const digits = normalizePhone(phone)
-  if (!digits) return null
-  const tail = digits.slice(-8)
-  const candidates = await prisma.contact.findMany({
-    where: { userId, phone: { contains: tail } },
-    orderBy: { createdAt: "asc" },
-  })
-  return candidates.find((c) => normalizePhone(c.phone).slice(-8) === tail) ?? null
+  const digits = withCountryCode(normalizePhone(phone))
+  if (!/^[1-9]\d{9,14}$/.test(digits)) return null
+  return prisma.contact.findUnique({ where: { userId_phone: { userId, phone: digits } } })
 }
 
 function tierFor(count: number): { tier: CrmContact["stats"]["tier"]; label: string } {

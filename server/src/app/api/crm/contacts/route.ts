@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   const { name, phone, listId } = parsed.data
 
   const digits = normalizePhone(phone)
-  if (digits.length < 8 || digits.length > 15) {
+  if (!/^[1-9]\d{9,14}$/.test(withCountryCode(digits))) {
     return NextResponse.json({ error: "Telefone inválido. Use DDD + número (com 55 se quiser)." }, { status: 400 })
   }
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   const existed = Boolean(contact)
   if (!contact) {
     // Guarda no formato internacional (com 55), pro wa.me e o Meta funcionarem.
-    contact = await prisma.contact.create({ data: { userId: user.id, name, phone: withCountryCode(digits) } })
+    contact = await prisma.contact.upsert({ where: { userId_phone: { userId: user.id, phone: withCountryCode(digits) } }, create: { userId: user.id, name, phone: withCountryCode(digits) }, update: {} })
   }
 
   if (listId) {

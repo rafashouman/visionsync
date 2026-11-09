@@ -24,7 +24,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" }, { status: 400 })
   }
 
-  const purchase = await createPurchase(user.id, contact.id, { ...parsed.data, source: "manual" })
+  let purchase
+  const key = req.headers.get("Idempotency-Key")
+  if (key !== null && (!key.trim() || key.length > 128)) return NextResponse.json({ error: "Chave de operação inválida." }, { status: 400 })
+  try { purchase = await createPurchase(user.id, contact.id, { ...parsed.data, source: "manual", requestKey: key ?? undefined }) }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível registrar a compra." }, { status: 409 }) }
 
   after(async () => {
     try {

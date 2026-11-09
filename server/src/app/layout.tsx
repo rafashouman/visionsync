@@ -4,7 +4,7 @@ import { AuthProvider } from "@/components/session-provider"
 
 export const metadata: Metadata = {
   title: "Vision CRM",
-  description: "CRM sobre o WhatsApp para tarólogas.",
+  description: "Relacionamentos, oportunidades e vendas conectados ao WhatsApp.",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

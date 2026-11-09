@@ -54,6 +54,53 @@
 }
 
 * { box-sizing: border-box; scrollbar-color: rgba(143, 163, 214, 0.35) transparent; }
+
+.vs-stack { display: flex; flex-direction: column; gap: 24px; max-width: 1240px; }
+.vs-search, .vs-actions { display: flex; align-items: center; gap: 12px; }
+.vs-contact-form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.vs-contact-form label { display: flex; flex-direction: column; gap: 8px; }
+.vs-contact-form input { padding: 12px; }
+.vs-actions { grid-column: 1/-1; justify-content: flex-end; }
+.vs-error { color: var(--danger); }
+.vs-empty { padding: 50px 20px; text-align: center; color: var(--muted); }
+.vs-empty h2 { color: var(--text); font-size: 20px; }
+.vs-contact-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px; border-bottom: 1px solid var(--soft); }
+.vs-contact-row:last-child { border-bottom: none; }
+.vs-contact-name { display: flex; align-items: center; gap: 14px; background: none; border: none; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+.vs-contact-name strong { display: block; overflow-wrap: anywhere; }
+.vs-contact-name small { display: block; color: var(--muted); margin-top: 5px; }
+.vs-avatar { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 14px; background: var(--accent-soft); color: var(--accent-text); font-size: 18px; }
+.vs-wa { display: flex; align-items: center; gap: 7px; text-decoration: none; color: var(--ok-text); font-size: 13px; }
+.vs-plugin-hero { display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 40px; padding: 48px; border: 1px solid var(--soft); border-radius: 24px; background: linear-gradient(120deg, var(--panel-2), var(--panel-1)); overflow: hidden; }
+.vs-eyebrow { color: var(--accent-text); font-weight: 700; letter-spacing: 2px; font-size: 11px; }
+.vs-plugin-hero h2 { font-size: clamp(30px, 3vw, 48px); line-height: 1.12; margin: 20px 0; letter-spacing: -1.5px; }
+.vs-plugin-hero p { color: var(--muted); line-height: 1.7; max-width: 420px; }
+.vs-primary { display: inline-flex; align-items: center; justify-content: center; gap: 10px; background: var(--accent); color: white; border-radius: 12px; padding: 14px 18px; font-weight: 600; text-decoration: none; margin: 16px 0; }
+.vs-primary:hover { background: var(--accent-hover); }
+.vs-plugin-hero small { display: block; color: var(--muted); font-size: 11px; }
+.vs-plugin-preview { padding: 28px; border: 1px solid var(--soft); border-radius: 20px; background: var(--inner); box-shadow: 0 24px 60px #0004; color: var(--ok); transform: rotate(-3deg); }
+.vs-preview-line { height: 9px; width: 75%; background: var(--soft); border-radius: 10px; margin-top: 22px; }
+.vs-preview-line.short { width: 45%; margin-top: 10px; }
+.vs-preview-card { margin: 28px 0; padding: 20px; border: 1px solid var(--accent-line); border-radius: 12px; background: var(--accent-soft); font-size: 12px; color: var(--muted); }
+.vs-dot { display: inline-block; height: 7px; width: 7px; border-radius: 50%; background: var(--ok); margin-right: 8px; }
+.vs-preview-card strong { display: block; font-size: 18px; color: var(--text); margin: 14px 0 0; }
+.vs-preview-card p { margin-bottom: 0; font-size: 12px; }
+.vs-preview-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.vs-preview-tags span { border-radius: 8px; background: var(--soft); padding: 8px; font-size: 11px; color: var(--text-2); }
+.vs-install-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+.vs-install-card { padding: 24px; background: var(--inner); border: 1px solid var(--soft); border-radius: 18px; }
+.vs-install-card>span { color: var(--accent-text); font: 600 13px monospace; }
+.vs-install-card h3 { font-size: 17px; margin: 18px 0 12px; }
+.vs-install-card p, .vs-plugin-note p { color: var(--muted); line-height: 1.65; font-size: 13px; }
+.vs-plugin-note { display: flex; align-items: center; gap: 18px; padding: 8px 16px; }
+.vs-plugin-note svg { flex-shrink: 0; color: var(--muted); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 4px; }
+@media(max-width:700px) {
+  .vs-plugin-hero { grid-template-columns: 1fr; padding: 28px; gap: 28px; }
+  .vs-plugin-preview { transform: none; }
+  .vs-install-grid, .vs-contact-form { grid-template-columns: 1fr; }
+  .vs-wa span { display: none; }
+}
 html, body {
   margin: 0;
   padding: 0;

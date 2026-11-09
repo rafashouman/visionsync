@@ -31,7 +31,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Telefone inválido" }, { status: 400 })
   }
 
-  const { contact, purchase } = await recordPurchaseByPhone(user.id, data)
+  let result
+  const key = req.headers.get("Idempotency-Key")
+  if (key !== null && (!key.trim() || key.length > 128)) return NextResponse.json({ error: "Chave de operação inválida." }, { status: 400 })
+  try { result = await recordPurchaseByPhone(user.id, { ...data, requestKey: key ?? undefined }) }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Não foi possível registrar a compra." }, { status: 409 }) }
+  const { contact, purchase } = result
 
   // Envia a conversão ao Meta depois de responder. Se falhar, o erro fica salvo
   // na compra e dá pra reenviar pelo painel; a compra em si nunca é perdida.

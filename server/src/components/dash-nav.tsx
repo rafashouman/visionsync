@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import {
-  Bell, Bot, Calendar, ChartColumn, Kanban, LogOut, Settings, Sparkles, Users, Wallet, Wrench, Zap,
+  Bell, Bot, Calendar, ChartColumn, Kanban, LogOut, Settings, Sparkles, Users, Wallet, Wrench, Zap, Puzzle,
   type LucideIcon,
 } from "lucide-react"
 
@@ -24,7 +24,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { label: "Funil", icon: Kanban, href: "/dashboard/funil" },
       { label: "Cobranças", icon: Wallet, href: "/dashboard/cobrancas" },
-      { label: "Contatos", icon: Users },
+      { label: "Contatos", icon: Users, href: "/dashboard/contatos" },
     ],
   },
   {
@@ -39,6 +39,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { label: "Ferramentas", icon: Wrench, href: "/dashboard/ferramentas" },
       { label: "Configurações", icon: Settings, href: "/dashboard/configuracoes" },
+      { label: "Plugin WhatsApp", icon: Puzzle, href: "/dashboard/extensao" },
     ],
   },
 ]

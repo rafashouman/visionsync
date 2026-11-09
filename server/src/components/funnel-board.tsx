@@ -22,13 +22,18 @@ type StepFilter = "todos" | "atrasado" | "hoje" | "nenhum"
 type SourceFilter = "todas" | "sem" | (typeof SOURCES)[number]
 type Drag = { contactId: string; fromId: string | null } | null
 
+const pendingSales = new Map<string, string>()
 async function call(method: string, url: string, body?: unknown) {
+  const signature = method === "POST" && url.endsWith("/purchase") ? url + JSON.stringify(body) : null
+  const key = signature ? pendingSales.get(signature) || crypto.randomUUID() : null
+  if (signature && key) pendingSales.set(signature, key)
   const res = await fetch(url, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(key ? { "Idempotency-Key": key } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   })
   const data = await res.json().catch(() => ({}))
+  if (signature && (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429))) pendingSales.delete(signature)
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`)
   return data
 }

@@ -44,10 +44,10 @@ export async function importFromWhatsApp(
   // No modo "só novos", as listas só são criadas se sobrar algum contato novo pra pôr nelas.
   if (onlyNew) {
     const have = await prisma.contact.findMany({ where: { userId }, select: { phone: true } })
-    const tails = new Set(have.map((c) => normalizePhone(c.phone).slice(-8)))
+    const tails = new Set(have.map((c) => withCountryCode(normalizePhone(c.phone))))
     const fresh = contacts.filter((c) => {
-      const d = normalizePhone(c.phone)
-      return d.length >= 8 && !tails.has(d.slice(-8))
+      const d = withCountryCode(normalizePhone(c.phone))
+      return /^[1-9]\d{9,14}$/.test(d) && !tails.has(d)
     })
     result.existing = contacts.filter((c) => normalizePhone(c.phone).length >= 8).length - fresh.length
     contacts = fresh
@@ -82,14 +82,14 @@ export async function importFromWhatsApp(
     result.listsCreated++
   }
 
-  // ── Contatos: um carregamento só, comparando pelos 8 últimos dígitos ──
+  // ── Contatos: um carregamento só, comparando o telefone internacional completo ──
   const all = await prisma.contact.findMany({
     where: { userId },
     select: { id: true, name: true, phone: true, waLastAt: true, waLastFromMe: true, waUnread: true, waArchived: true },
   })
   const byTail = new Map<string, (typeof all)[number]>()
   for (const c of all) {
-    const tail = normalizePhone(c.phone).slice(-8)
+    const tail = withCountryCode(normalizePhone(c.phone))
     if (tail && !byTail.has(tail)) byTail.set(tail, c)
   }
 
@@ -100,9 +100,9 @@ export async function importFromWhatsApp(
   const seenTail = new Set<string>()
 
   for (const c of contacts) {
-    const digits = normalizePhone(c.phone)
-    if (digits.length < 8 || digits.length > 15) { result.skipped++; continue }
-    const tail = digits.slice(-8)
+    const digits = withCountryCode(normalizePhone(c.phone))
+    if (!/^[1-9]\d{9,14}$/.test(digits)) { result.skipped++; continue }
+    const tail = digits
     if (seenTail.has(tail)) continue // mesmo número duas vezes no mesmo lote
     seenTail.add(tail)
 
@@ -151,8 +151,11 @@ export async function importFromWhatsApp(
     await Promise.all(updates.slice(i, i + 20).map((u) => prisma.contact.update({ where: { id: u.id }, data: u.data })))
   }
   if (links.length) {
-    const r = await prisma.crmListMember.createMany({ data: links, skipDuplicates: true })
-    result.memberships = r.count
+    for (const link of links) {
+      const existing = await prisma.crmListMember.findUnique({ where: { listId_contactId: link } })
+      await prisma.crmListMember.upsert({ where: { listId_contactId: link }, create: link, update: {} })
+      if (!existing) result.memberships++
+    }
   }
   return result
 }

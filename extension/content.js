@@ -45,10 +45,19 @@ const fmtDate = (iso) => {
 }
 const todayPlus = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
 
+function savePrefs(values) { return chrome.runtime.sendMessage({ type: "prefs-set", values }) }
+const purchaseRequests = new Map()
 function api(method, path, body) {
   return new Promise((resolve) => {
     try {
-      chrome.runtime.sendMessage({ type: "api", method, path, body }, (r) => resolve(r || { ok: false, status: 0 }))
+      const purchase = method === "POST" && /\/purchase$/.test(path)
+      const signature = purchase ? path + JSON.stringify(body) : null
+      let requestKey = signature && purchaseRequests.get(signature)
+      if (purchase && !requestKey) { requestKey = crypto.randomUUID(); purchaseRequests.set(signature, requestKey) }
+      chrome.runtime.sendMessage({ type: "api", method, path, body, ...(requestKey ? { requestKey } : {}) }, (r) => {
+        if (signature && r && r.status) purchaseRequests.delete(signature)
+        resolve(r || { ok: false, status: 0 })
+      })
     } catch {
       resolve({ ok: false, status: 0, error: "extension_reloaded" })
     }
@@ -970,7 +979,7 @@ function renderWaiting() {
         const w = waitList.find((x) => x.key === done.getAttribute("data-wait-done"))
         if (w) {
           waitHandled[w.key] = w.lastT
-          chrome.storage.local.set({ vcrmHandled: waitHandled }).catch(() => {})
+          savePrefs({ vcrmHandled: waitHandled }).catch(() => {})
           waitList = waitList.filter((x) => x.key !== w.key)
           renderWaiting()
         }
@@ -1193,7 +1202,7 @@ async function onHdrPopClick(e) {
   if (act === "config") { if (state.apiUrl) window.open(state.apiUrl + "/dashboard/funil", "_blank"); return }
   if (act === "hide") {
     hdrHidden = !hdrHidden
-    chrome.storage.local.set({ vcrmHdrHidden: hdrHidden }).catch(() => {})
+    savePrefs({ vcrmHdrHidden: hdrHidden }).catch(() => {})
     hdrPop = null
     renderHdrPop()
     ensureHeaderBar()
@@ -1235,7 +1244,7 @@ async function scheduleChat(due, text) {
 function endConversation() {
   if (!state.chatKey) return toast("Não consegui identificar esta conversa.")
   waitHandled[state.chatKey] = state.lastT || Date.now()
-  chrome.storage.local.set({ vcrmHandled: waitHandled }).catch(() => {})
+  savePrefs({ vcrmHandled: waitHandled }).catch(() => {})
   waitList = waitList.filter((x) => x.key !== state.chatKey)
   renderWaiting()
   toast("Conversa encerrada. Ela some do aviso até a cliente escrever de novo.")
@@ -1249,7 +1258,7 @@ const BAR_ICON = { TEXT: "text", CONTACT: "user", AUDIO: "mic", IMAGE: "image", 
 const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {} }
 
 function savePrefs() {
-  try { chrome.storage.local.set({ vcrmPrefs: prefs }).catch(() => {}) } catch {}
+  try { savePrefs({ vcrmPrefs: prefs }).catch(() => {}) } catch {}
 }
 
 /** Cor estável por categoria (a categoria é só um texto; a cor sai do nome). */
@@ -1720,9 +1729,9 @@ async function refresh(force) {
   if (!force && !changed) return
 
   const mine = ++seq
-  const cfg = await chrome.storage.local.get(["apiUrl", "token"]).catch(() => ({}))
+  const cfg = await chrome.runtime.sendMessage({ type: "config-status" }).catch(() => ({}))
   state.apiUrl = (cfg.apiUrl || "").replace(/\/+$/, "")
-  if (!cfg.apiUrl || !cfg.token) { state.status = "no_config"; return render() }
+  if (!cfg.configured) { state.status = "no_config"; return render() }
 
   if (changed) { state.contact = null; state.detail = null; state.charges = []; state.reminders = []; state.adInfo = undefined }
   state.status = "loading"
@@ -1775,7 +1784,7 @@ function startObserver() {
   document.addEventListener("input", onComposerInput, true)
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePop() }, true)
   // token/URL mudaram no popup: recarrega
-  chrome.storage.onChanged.addListener(() => { state.replies = []; state.lists = []; refresh(true) })
+  setInterval(() => { if (!document.hidden) refresh(true) }, 30000)
 }
 
 function init() {
@@ -1784,7 +1793,7 @@ function init() {
   startObserver()
   refresh(true)
   // aviso de quem espera resposta: confere ao abrir (depois que o WhatsApp carregou) e a cada minuto
-  chrome.storage.local.get(["vcrmHandled", "vcrmHdrHidden", "vcrmPrefs"]).then((c) => {
+  chrome.runtime.sendMessage({ type: "prefs-get" }).then((c) => {
     waitHandled = c.vcrmHandled || {}
     hdrHidden = !!c.vcrmHdrHidden
     if (c.vcrmPrefs) Object.assign(prefs, c.vcrmPrefs)
