@@ -4,6 +4,8 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { BrandLogo } from "@/components/brand-logo"
+import { ThemePicker } from "@/components/theme-picker"
 import { PasswordInput } from "@/components/password-input"
 
 export default function LoginPage() {
@@ -30,7 +32,7 @@ export default function LoginPage() {
   return (
     <div className="auth-bg">
       <form onSubmit={handleSubmit} className="auth-card">
-        <h1 className="auth-title">✦ Vision CRM</h1>
+        <h1 className="auth-title"><BrandLogo size="big" /></h1>
         <p className="auth-sub">Entre na sua conta</p>
         <label className="auth-label">Email</label>
         <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
@@ -41,6 +43,7 @@ export default function LoginPage() {
         <p className="auth-foot">
           Não tem conta? <Link href="/cadastro">Cadastre-se</Link>
         </p>
+        <details className="vs-auth-appearance"><summary>Aparência</summary><ThemePicker compact /></details>
       </form>
     </div>
   )

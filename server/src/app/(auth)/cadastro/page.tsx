@@ -4,6 +4,8 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { BrandLogo } from "@/components/brand-logo"
+import { ThemePicker } from "@/components/theme-picker"
 import { PasswordInput } from "@/components/password-input"
 
 export default function CadastroPage() {
@@ -57,7 +59,7 @@ export default function CadastroPage() {
   return (
     <div className="auth-bg">
       <form onSubmit={handleSubmit} className="auth-card">
-        <h1 className="auth-title">✦ Vision CRM</h1>
+        <h1 className="auth-title"><BrandLogo size="big" /></h1>
         <p className="auth-sub">Crie sua conta</p>
         <label className="auth-label">Nome</label>
         <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
@@ -73,6 +75,7 @@ export default function CadastroPage() {
         <p className="auth-foot">
           Já tem conta ou acabou de criar? <Link href="/login">Entrar</Link>
         </p>
+        <details className="vs-auth-appearance"><summary>Aparência</summary><ThemePicker compact /></details>
       </form>
     </div>
   )

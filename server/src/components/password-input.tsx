@@ -42,7 +42,7 @@ export function PasswordInput({ value, onChange, placeholder, minLength, autoCom
           transform: "translateY(-50%)",
           background: "transparent",
           border: "none",
-          color: dark ? "#ff5c8a" : "var(--accent-text)",
+          color: dark ? "var(--auth-link)" : "var(--accent-text)",
           fontSize: 12,
           fontWeight: 600,
           cursor: "pointer",

@@ -49,7 +49,12 @@ async function inspectInstance(port: number): Promise<"down" | "uninitialized" |
     const hello = await client.db("admin").command({ hello: 1 })
     if (hello.setName && hello.isWritablePrimary) return "ready"
     return "uninitialized"
-  } catch {
+  } catch (error) {
+    // A restricted shell can see disk files but cannot reach the host's loopback.
+    // Do not mistake permission denial for a stopped database and launch another mongod.
+    if (String(error).includes("EACCES") || String(error).includes("EPERM")) {
+      throw new Error("Acesso à conexão local do MongoDB bloqueado pelo ambiente. Execute npm run db:prepare no terminal do computador.")
+    }
     return "down"
   } finally {
     await client.close().catch(() => {})

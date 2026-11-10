@@ -1,13 +1,13 @@
 // Roda DENTRO da página do WhatsApp Web (mundo "MAIN"), porque o telefone da
 // conversa não aparece no HTML: ele só existe nos dados internos do WhatsApp.
 // Aqui só LEMOS qual conversa está aberta e o número dela. Nada é alterado nem enviado.
-// Fala com o content.js por eventos: "vcrm-req" (pedido) e "vcrm-res" (resposta).
+// Fala com o content.js por eventos: "vcrm-v2-req" (pedido) e "vcrm-v2-res" (resposta).
 //
 // ⚠ PARTE FRÁGIL: nomes de módulos internos do WhatsApp mudam. Por isso tentamos
 // vários caminhos e devolvemos um "debug" dizendo o que funcionou.
 (() => {
-  if (window.__vcrmBridge) return
-  window.__vcrmBridge = true
+  if (window.__vcrmBridgeVersion === "0.20.0") return
+  window.__vcrmBridgeVersion = "0.20.0"
 
   const req = (name) => {
     try { return window.require ? window.require(name) : null } catch { return null }
@@ -79,11 +79,13 @@
     let phone = ""
     let name = ""
     let key = ""
+    let pic = ""
     let lastT = 0
     try {
       const chat = findActiveChat(dbg)
       dbg.achouChat = !!chat
       if (chat) {
+        pic = picOf(chat, collections())
         key = serial(chat.id)
         const lm = lastMessageOf(chat)
         lastT = ((lm && lm.t) || chat.t || 0) * 1000
@@ -92,7 +94,7 @@
         dbg.chaves = Object.keys(chat).slice(0, 20)
       }
     } catch (e) { dbg.erro = String(e).slice(0, 120) }
-    return { phone, name, key, lastT, dbg }
+    return { phone, name, key, lastT, pic, dbg }
   }
 
   // ── Leitura em massa: etiquetas, contatos e estado das conversas ──
@@ -417,17 +419,35 @@
     return out
   }
 
-  document.addEventListener("vcrm-req", (ev) => {
+  async function exportMessage(id) {
+    const chat = findActiveChat({})
+    const msg = chat && arr(chat.msgs).find(m => serial(m.id) === id)
+    if (!msg || msg.isViewOnce || msg.isViewOnceV2 || msg.isEphemeral || !["image", "audio", "ptt"].includes(msg.type)) return { error: "Mídia indisponível ou protegida. Use uma mensagem comum de áudio ou imagem." }
+    if (!msg.size || Number(msg.size) > 4 * 1024 * 1024) return { error: "O arquivo precisa ter até 4 MB." }
+    try {
+      const manager = req("WAWebDownloadManager")?.downloadManager
+      if (!manager?.downloadAndMaybeDecrypt) return { error: "Este WhatsApp ainda não disponibilizou a mídia. Baixe-a na conversa e tente novamente." }
+      const params = Object.fromEntries(["directPath", "encFilehash", "filehash", "mediaKey", "mediaKeyTimestamp", "type"].map(k => [k, msg[k]]))
+      const data = await manager.downloadAndMaybeDecrypt({ ...params, signal: AbortSignal.timeout(12000), downloadQpl: { addAnnotations() { return this }, addPoint() { return this } } })
+      const bytes = new Uint8Array(data)
+      if (!bytes.length || bytes.length > 4 * 1024 * 1024) return { error: "Arquivo ausente ou acima de 4 MB." }
+      let binary = ""
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      return { base64: btoa(binary), mime: String(msg.mimetype || "").split(";")[0].trim(), type: msg.type === "image" ? "IMAGE" : "AUDIO", asVoiceNote: msg.type === "ptt", caption: msg.caption || "" }
+    } catch { return { error: "Não foi possível obter essa mídia. Abra ou baixe o arquivo no WhatsApp e tente novamente." } }
+  }
+  document.addEventListener("vcrm-v2-req", async (ev) => {
     let id = ev.detail
     let kind = "chat"
     let arg = null
     try { const d = JSON.parse(ev.detail); if (d && typeof d === "object") { id = d.id; kind = d.kind || "chat"; arg = d.arg } } catch {}
     const out =
-      kind === "scan" ? scan()
+      kind === "export-message" ? await exportMessage(String(arg || ""))
+      : kind === "scan" ? scan()
       : kind === "waiting" ? waiting((arg && arg.minMinutes) || 60, (arg && arg.maxHours) || 72)
       : kind === "open" ? openChat(String(arg || ""))
       : kind === "adinfo" ? adInfo()
       : answer()
-    document.dispatchEvent(new CustomEvent("vcrm-res", { detail: JSON.stringify({ id, ...out }) }))
+    document.dispatchEvent(new CustomEvent("vcrm-v2-res", { detail: JSON.stringify({ id, ...out }) }))
   })
 })()

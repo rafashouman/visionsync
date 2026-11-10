@@ -1,4 +1,5 @@
 import type { Contact } from "@prisma/client"
+import { avatarUrl } from "@/lib/contact-avatar"
 import { sumMoney } from "@/lib/money"
 import { prisma } from "@/lib/prisma"
 import { withCountryCode } from "@/lib/phone"
@@ -18,6 +19,7 @@ export type CrmPurchase = {
 export type CrmContact = {
   found: boolean
   contactId: string | null
+  avatarUrl?: string | null
   name: string | null
   phone: string | null
   email?: string | null
@@ -104,6 +106,7 @@ export async function buildContact(userId: string, contactId: string, purchasePa
   return {
     found: true,
     contactId: contact.id,
+    avatarUrl: avatarUrl(contact),
     name: contact.name,
     phone: contact.phone,
     email: contact.email,

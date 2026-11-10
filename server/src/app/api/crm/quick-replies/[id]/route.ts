@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
+import { removeStoredFile } from "@/lib/local-storage"
 import { getAuthUser } from "@/lib/crm-auth"
 import {
   SHORTCUT_TAKEN, captionField, categoryField, contactNameField, contactPhoneField, isUniqueViolation,
   nameField, shortcutField, textField, toView,
 } from "@/lib/quick-replies"
 import { MEDIA_RULES, isMediaKind } from "@/lib/quick-reply-types"
+import { validateSequence } from "@/lib/quick-reply-sequence"
 
 const schema = z.object({
   name: nameField.optional(),
@@ -46,6 +48,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       const t = textField.safeParse(d.text)
       if (!t.success) return NextResponse.json({ error: firstIssue(t.error) }, { status: 400 })
       data.text = t.data
+      if (current.type === "SEQUENCE") { const error = await validateSequence(user.id, t.data); if (error) return NextResponse.json({ error }, { status: 400 }) }
     } else if (isMediaKind(current.type) && MEDIA_RULES[current.type].hasCaption) {
       // legenda: pode ficar vazia
       const c = captionField.safeParse(d.text)
@@ -96,7 +99,9 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
 
   const { id } = await ctx.params
+  const current = await prisma.quickReply.findFirst({ where: { id, userId: user.id }, select: { file: { select: { storageKey: true } } } })
   const res = await prisma.quickReply.deleteMany({ where: { id, userId: user.id } })
   if (res.count === 0) return NextResponse.json({ error: "Resposta não encontrada" }, { status: 404 })
+  await removeStoredFile(current?.file?.storageKey)
   return NextResponse.json({ ok: true })
 }

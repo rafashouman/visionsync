@@ -7,7 +7,9 @@ import { PageHeader } from "./page-header"
 import { btn, card, field } from "@/lib/ui"
 import { MessageSquare, Plus, Search, Users } from "lucide-react"
 
-type Contact = { id: string; name: string; phone: string }
+import { ContactAvatar } from "./contact-avatar"
+
+type Contact = { id: string; name: string; phone: string; avatarUrl?: string | null }
 export function ContactsBoard({ initial, initialQuery = "" }: { initial?: { items: Contact[]; nextCursor: string | null }; initialQuery?: string }) {
   const [cursor, setCursor] = useState<string | null>(initial?.nextCursor ?? null)
   const [moreBusy, setMoreBusy] = useState(false)
@@ -71,7 +73,7 @@ export function ContactsBoard({ initial, initialQuery = "" }: { initial?: { item
     </form>}
     <div style={{ ...card, padding: 8 }} aria-busy={loading}>
       {loading ? <p className="vs-empty">Carregando contatos…</p> : !contacts.length ? <div className="vs-empty"><Users size={32} /><h2>{query ? "Nenhum contato encontrado" : "Sua próxima conversa começa aqui"}</h2><p>{query ? "Tente outro nome ou número." : "Adicione um contato ou importe pelo plugin no WhatsApp."}</p></div> : contacts.map(c => <div key={c.id} className="vs-contact-row">
-        <button className="vs-contact-name" onClick={() => setSelected(c.id)}><span className="vs-avatar">{c.name.slice(0, 1).toUpperCase()}</span><span><strong>{c.name}</strong><small>+{c.phone}</small></span></button>
+        <button className="vs-contact-name" onClick={() => setSelected(c.id)}><ContactAvatar name={c.name} src={c.avatarUrl} /><span><strong>{c.name}</strong><small>+{c.phone}</small></span></button>
         <a aria-label={`Conversar com ${c.name} no WhatsApp`} href={`https://wa.me/${c.phone}`} target="_blank" rel="noreferrer" className="vs-wa"><MessageSquare size={17} /><span>Conversar</span></a>
       </div>)}
     </div>

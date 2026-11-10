@@ -35,7 +35,7 @@ export function MediaLine({ item, kind }: { item: QuickReplyView; kind: MediaKin
         </span>
         {item.mediaSize != null && <span style={{ color: "var(--faint)" }}>{formatBytes(item.mediaSize)}</span>}
         {item.viewOnce && <span style={chip("wine")}>visualização única</span>}
-        {item.asVoiceNote && <span style={chip("wine")}>áudio gravado na hora</span>}
+        {item.asVoiceNote && <span style={chip("wine")}>nota de voz</span>}
         {kind === "DOCUMENT" ? (
           <a href={fileUrl(item.id)} download style={{ ...link, textDecoration: "underline" }}>{ACTION_LABEL[kind]}</a>
         ) : (

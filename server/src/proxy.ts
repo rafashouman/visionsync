@@ -6,7 +6,8 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
 
   const publicRoutes = ["/login", "/cadastro"]
-  const isPublic = publicRoutes.some((r) => pathname.startsWith(r))
+  const brandAssets = ["logo-big-white.png", "logo-big-dark.png", "logo-small-wh.png", "logo-small-dark.png"]
+  const isPublic = publicRoutes.some((r) => pathname.startsWith(r)) || brandAssets.some(name => pathname === `/brand/${name}`)
 
   if (!isLoggedIn && !isPublic) {
     return NextResponse.redirect(new URL("/login", req.url))

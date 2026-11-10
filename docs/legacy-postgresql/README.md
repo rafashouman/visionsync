@@ -1,4 +1,4 @@
-# Vision CRM
+# VisionSync
 
 CRM **separado** da agenda, que vive sobre o WhatsApp Web. Projeto próprio,
 banco próprio, multiusuário. A integração com a agenda de tarot fica pra uma

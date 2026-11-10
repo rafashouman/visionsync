@@ -15,7 +15,8 @@
     "db:push": "npm run db:push --workspace @visionsync/web",
     "db:indexes": "npm run db:indexes --workspace @visionsync/web",
     "db:migrate:legacy": "npm run db:migrate:legacy --workspace @visionsync/web",
-    "extension:build": "npm run build --workspace @visionsync/extension"
+    "extension:build": "npm run build --workspace @visionsync/extension",
+    "whatsapp:worker": "npm run whatsapp:worker --workspace @visionsync/web"
   },
   "engines": {
     "node": ">=22.14"

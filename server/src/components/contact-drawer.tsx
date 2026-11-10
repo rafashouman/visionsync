@@ -1,4 +1,5 @@
 "use client"
+import { ContactAvatar } from "./contact-avatar"
 
 import { useDialog } from "./use-dialog"
 
@@ -185,6 +186,7 @@ export function ContactDrawer({
     <div style={overlay} onClick={close}>
       <aside ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} tabIndex={-1} style={panel} onClick={(e) => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          {detail && <ContactAvatar name={detail.contact.name} src={detail.contact.avatarUrl} size={44} />}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div id={`${uid}-title`} style={{ fontSize: 18, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--strong)" }}>
               {detail?.contact.name ?? "Carregando..."}
@@ -470,7 +472,7 @@ function Stat({ value, text }: { value: string; text: string }) {
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "var(--overlay)", zIndex: 50, display: "flex", justifyContent: "flex-end" }
 const panel: React.CSSProperties = {
   width: 410, maxWidth: "100vw", height: "100%", overflowY: "auto", padding: 20,
-  background: "linear-gradient(180deg, var(--panel-1), var(--panel-2))",
+  background: "var(--panel-surface)",
   borderLeft: "1px solid var(--line)",
-  boxShadow: "-12px 0 40px rgba(224, 36, 94, 0.14)",
+  boxShadow: "var(--drawer-shadow)",
 }

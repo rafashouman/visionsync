@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Vision CRM — content script (roda dentro do WhatsApp Web)
+// VisionSync — content script (roda dentro do WhatsApp Web)
 //
 // Coluna de ícones na direita (estilo Hotzapp) + painel que abre ao lado:
 //   Conversa · Notas · Cobranças · Respostas rápidas · Painel web
@@ -15,6 +15,7 @@ const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
 const PANEL_W = 340
 const RAIL_W = 44
+const SCRIPT_VERSION = "0.20.4"
 
 const state = {
   open: false,
@@ -45,7 +46,70 @@ const fmtDate = (iso) => {
 }
 const todayPlus = (n) => new Date(Date.now() + n * 864e5).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
 
-function savePrefs(values) { return chrome.runtime.sendMessage({ type: "prefs-set", values }) }
+const extensionLife = { expired: false, intervals: new Set(), timers: new Set(), observers: new Set(), pending: new Set(), abort: typeof AbortController === "function" ? new AbortController() : null }
+function listenGlobal(target, type, handler, options = {}) {
+  if (extensionLife.expired) return
+  const opts = typeof options === "boolean" ? { capture: options } : options
+  target.addEventListener(type, handler, { ...opts, ...(extensionLife.abort ? { signal: extensionLife.abort.signal } : {}) })
+}
+function guardedEvent(fn) {
+  return event => {
+    if (event.type === "submit") event.preventDefault()
+    event.stopPropagation?.()
+    if (extensionLife.expired) return
+    try { Promise.resolve(fn(event)).catch(error => { handleExtensionError(error); if (!extensionLife.expired) toast("Não foi possível concluir esta ação. Tente novamente.") }) }
+    catch (error) { handleExtensionError(error) }
+  }
+}
+function cancelLater(id) { globalThis["clearTimeout"](id); extensionLife.timers.delete(id) }
+function cancelRepeat(id) { globalThis["clearInterval"](id); extensionLife.intervals.delete(id) }
+function repeat(fn, delay) {
+  const id = globalThis["setInterval"](() => { if (!extensionLife.expired) void Promise.resolve().then(fn).catch(handleExtensionError) }, delay)
+  extensionLife.intervals.add(id); return id
+}
+function later(fn, delay) {
+  const id = globalThis["setTimeout"](() => { extensionLife.timers.delete(id); if (!extensionLife.expired) void Promise.resolve().then(fn).catch(handleExtensionError) }, delay)
+  extensionLife.timers.add(id); return id
+}
+function handleExtensionError(error) {
+  if (/context invalidated|extension.*reload/i.test(String(error?.message || error))) invalidateExtension()
+}
+function invalidateExtension(silent = false) {
+  if (extensionLife.expired) return
+  extensionLife.expired = true
+  extensionLife.abort?.abort()
+  for (const cancel of [...extensionLife.pending]) cancel()
+  for (const id of extensionLife.intervals) cancelRepeat(id)
+  for (const id of extensionLife.timers) cancelLater(id)
+  for (const observer of extensionLife.observers) observer.disconnect()
+  if (silent) return
+  try {
+    const banner = document.createElement("div")
+    banner.id = "vcrm-reload-notice"
+    banner.setAttribute("role", "alert")
+    banner.textContent = "VisionSync foi atualizado. Recarregue esta aba do WhatsApp Web para reativar os botões. Seu rascunho não foi enviado."
+    document.body.appendChild(banner)
+  } catch {}
+}
+function runtimeMessage(message) {
+  if (extensionLife.expired) return Promise.resolve({ ok: false, status: 0, error: "extension_reloaded" })
+  return new Promise(resolve => {
+    let settled = false, timer = null
+    const cancel = () => finish({ ok: false, status: 0, error: "extension_reloaded" })
+    const finish = result => { if (!settled) { settled = true; extensionLife.pending.delete(cancel); if (timer) cancelLater(timer); resolve(result || { ok: false, status: 0 }) } }
+    const fail = error => { handleExtensionError(error); finish({ ok: false, status: 0, error: extensionLife.expired ? "extension_reloaded" : "runtime_unavailable" }) }
+    extensionLife.pending.add(cancel)
+    timer = typeof setTimeout === "function" ? later(() => finish({ ok: false, status: 0, error: "runtime_timeout" }), 25000) : null
+    try {
+      if (!chrome?.runtime || ("id" in chrome.runtime && !chrome.runtime.id)) { invalidateExtension(); return finish({ ok: false, status: 0, error: "extension_reloaded" }) }
+      const pending = chrome.runtime.sendMessage(message, response => {
+        try { const error = chrome.runtime.lastError; if (error) fail(error); else finish(response) } catch (error) { fail(error) }
+      })
+      if (pending && typeof pending.then === "function") pending.then(finish, fail)
+    } catch (error) { fail(error) }
+  })
+}
+function savePrefs(values) { return runtimeMessage({ type: "prefs-set", values: values || { vcrmPrefs: prefs, vcrmHandled: waitHandled, vcrmHdrHidden: hdrHidden } }) }
 const purchaseRequests = new Map()
 function api(method, path, body) {
   return new Promise((resolve) => {
@@ -54,7 +118,7 @@ function api(method, path, body) {
       const signature = purchase ? path + JSON.stringify(body) : null
       let requestKey = signature && purchaseRequests.get(signature)
       if (purchase && !requestKey) { requestKey = crypto.randomUUID(); purchaseRequests.set(signature, requestKey) }
-      chrome.runtime.sendMessage({ type: "api", method, path, body, ...(requestKey ? { requestKey } : {}) }, (r) => {
+      runtimeMessage({ type: "api", method, path, body, ...(requestKey ? { requestKey } : {}) }).then((r) => {
         if (signature && r && r.status) purchaseRequests.delete(signature)
         resolve(r || { ok: false, status: 0 })
       })
@@ -166,6 +230,7 @@ function parseSequenceSteps(raw) {
         return arr.map((s) => ({
           text: String((s && s.text) || ""),
           delaySec: Math.max(0, Math.min(60, Number((s && s.delaySec) ?? 2) || 0)),
+          quickReplyId: typeof s?.quickReplyId === "string" ? s.quickReplyId : undefined,
         }))
       }
     } catch {}
@@ -181,7 +246,7 @@ function googleCalendarUrl({ title, details, dueAt }) {
   const fmt = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: title || "Retorno WhatsApp — Vision CRM",
+    text: title || "Retorno WhatsApp — VisionSync",
     dates: `${fmt(start)}/${fmt(end)}`,
     details: details || "",
   })
@@ -211,13 +276,13 @@ function askBridge(kind = "chat", timeoutMs = 1200, arg = null) {
       let d = null
       try { d = JSON.parse(ev.detail) } catch {}
       if (!d || d.id !== id) return
-      document.removeEventListener("vcrm-res", done)
-      clearTimeout(t)
+      document.removeEventListener("vcrm-v2-res", done)
+      cancelLater(t)
       resolve(d)
     }
-    const t = setTimeout(() => { document.removeEventListener("vcrm-res", done); resolve(null) }, timeoutMs)
-    document.addEventListener("vcrm-res", done)
-    document.dispatchEvent(new CustomEvent("vcrm-req", { detail: JSON.stringify({ id, kind, arg }) }))
+    const t = later(() => { document.removeEventListener("vcrm-v2-res", done); resolve(null) }, timeoutMs)
+    listenGlobal(document, "vcrm-v2-res", done)
+    document.dispatchEvent(new CustomEvent("vcrm-v2-req", { detail: JSON.stringify({ id, kind, arg }) }))
   })
 }
 
@@ -226,7 +291,7 @@ async function resolveChat() {
   const b = await askBridge()
   state.bridgeDbg = b ? b.dbg : { semResposta: true }
   if (b && b.phone === "GROUP") return { phone: null, name: null }
-  if (b && b.phone) return { phone: b.phone, name: (b.name || getActiveName() || "").trim() || null, key: b.key || "", lastT: b.lastT || 0 }
+  if (b && b.phone) return { phone: b.phone, name: (b.name || getActiveName() || "").trim() || null, key: b.key || "", lastT: b.lastT || 0, pic: b.pic || document.querySelector("#main header img")?.src || "" }
   // plano B: título do cabeçalho é um número (contato sem nome salvo)
   const nm = getActiveName()
   const only = nm ? nm.replace(/[ ()+\- ]/g, "") : ""
@@ -280,19 +345,35 @@ function collectDiagnostic() {
 function insertIntoComposer(text) {
   const box = getComposer()
   if (!box) { toast("Abra uma conversa pra usar a mensagem."); return false }
-  box.focus()
   let ok = false
   try {
-    const dt = new DataTransfer()
-    dt.setData("text/plain", text)
-    ok = box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }))
-    // paste tratado pelo WhatsApp devolve false (preventDefault)
-    ok = !ok
+    box.focus()
+    try {
+      const dt = new DataTransfer()
+      dt.setData("text/plain", text)
+      // paste tratado pelo WhatsApp devolve false (preventDefault).
+      ok = !box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }))
+    } catch { ok = false }
+    if (!ok && typeof document.execCommand === "function") ok = !!document.execCommand("insertText", false, text)
   } catch { ok = false }
-  if (!ok) ok = document.execCommand("insertText", false, text)
-  if (!ok) toast("Não consegui escrever no campo. Copiei o texto.")
-  if (!ok) navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {})
-  return ok
+  if (ok) return true
+
+  toast("Não consegui escrever no campo. Copie a mensagem manualmente se necessário.")
+  try {
+    const clipboard = navigator.clipboard
+    if (clipboard && typeof clipboard.writeText === "function") {
+      const copied = clipboard.writeText(text)
+      // Algumas integrações retornam undefined. Não chamar .catch nesse valor
+      // nem anunciar uma cópia que não pôde ser confirmada.
+      if (copied && typeof copied.then === "function") {
+        Promise.resolve(copied).then(
+          () => toast("Não consegui escrever no campo. Texto copiado; cole no WhatsApp e revise."),
+          () => toast("Não consegui escrever nem copiar. Copie a mensagem manualmente."),
+        ).catch(() => {})
+      }
+    }
+  } catch { /* Área de transferência indisponível: manter o aviso de cópia manual. */ }
+  return false
 }
 
 // ── Interface: raiz, coluna de ícones, painel ────────────────────────────────
@@ -311,9 +392,10 @@ function ensureRoot() {
   if (root) return root
   root = document.createElement("div")
   root.id = ROOT_ID
-  root.addEventListener("click", onClick)
-  root.addEventListener("submit", onSubmit)
+  root.addEventListener("click", guardedEvent(onClick), true)
+  root.addEventListener("submit", guardedEvent(onSubmit), true)
   root.addEventListener("input", onInput)
+  root.addEventListener("change", guardedEvent(onMediaUpload))
   document.body.appendChild(root)
   document.documentElement.classList.add("vcrm-on")
   return root
@@ -325,13 +407,58 @@ function applyLayout() {
 
 function toast(msg) {
   state.toast = msg
-  render()
-  clearTimeout(toast.t)
-  toast.t = setTimeout(() => { state.toast = ""; render() }, 3200)
+  const root = document.getElementById(ROOT_ID)
+  if (root) {
+    let notice = root.querySelector(".vc-toast")
+    if (!notice) { notice = document.createElement("div"); notice.className = "vc-toast"; notice.setAttribute("role", "status"); root.appendChild(notice) }
+    notice.textContent = msg
+  }
+  cancelLater(toast.t)
+  toast.t = later(() => { state.toast = ""; document.querySelector("#vcrm-root .vc-toast")?.remove() }, 5000)
+}
+
+function mediaPicker(id) {
+  return `<label>Áudio ou imagem</label><select id="${id}" name="scheduledReplyId"><option value="">Sem anexo</option>${state.replies.filter(r => ["AUDIO", "IMAGE"].includes(r.type) && !r.viewOnce).map(r => `<option value="${esc(r.id)}">${esc(r.name)} (${r.type === "AUDIO" ? "áudio" : "imagem"})</option>`).join("")}</select>
+    <label class="vc-upload">Anexar arquivo do computador<input type="file" data-upload-picker="${id}" accept=".ogg,.mp3,.jpg,.jpeg,.png,.webp" /></label><small>Até 4 MB. Para áudio, deixe o campo de texto vazio.</small>`
+}
+let mediaUploadCount = 0
+async function uploadReplyFile(file, options = {}) {
+  if (!file?.size || file.size > 4 * 1024 * 1024) throw new Error("Escolha um arquivo de até 4 MB.")
+  const ext = file.name.split(".").pop().toLowerCase()
+  const mime = { ogg: "audio/ogg", mp3: "audio/mpeg", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" }[ext]
+  if (!mime) throw new Error("Use áudio OGG/MP3 ou imagem PNG/JPEG/WebP.")
+  const mediaType = mime.startsWith("audio/") ? "AUDIO" : "IMAGE"
+  if (options.type && options.type !== mediaType) throw new Error("O arquivo não corresponde ao tipo selecionado.")
+  mediaUploadCount++
+  try {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  let binary = ""
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  const result = await runtimeMessage({ type: "upload-reply", name: (options.name || file.name).slice(0, 80), mediaType, mime, base64: btoa(binary), caption: mediaType === "IMAGE" ? (options.text || "").slice(0, 1024) : "", asVoiceNote: !!options.asVoiceNote, category: options.category || "", shortcut: options.shortcut || "" })
+  if (!result.ok) throw new Error(result.data?.error || (extensionLife.expired ? "Extension context invalidated" : "Não foi possível salvar o arquivo. Confira a conexão."))
+  state.replies = [...state.replies.filter(r => r.id !== result.data.id), result.data]
+  ensureBar()
+  return result.data
+  } finally { mediaUploadCount-- }
+}
+async function onMediaUpload(event) {
+  const input = event.target.closest("input[data-upload-picker]")
+  if (!input?.files?.[0]) return
+  const phone = state.phone, select = document.getElementById(input.dataset.uploadPicker)
+  input.disabled = true
+  try {
+    const reply = await uploadReplyFile(input.files[0])
+    if (state.phone === phone && select?.isConnected) {
+      const option = document.createElement("option"); option.value = reply.id; option.textContent = reply.name; option.selected = true; select.appendChild(option)
+      toast("Anexo carregado e selecionado para o agendamento.")
+    } else toast("Arquivo salvo na biblioteca. A conversa mudou; selecione-o no novo agendamento.")
+  } catch (error) { handleExtensionError(error); if (!extensionLife.expired) toast(error.message) }
+  finally { input.disabled = false }
 }
 
 function render() {
   const root = ensureRoot()
+  if (state.open && state.tab === "respostas" && rp.form && root.querySelector('form[data-form="rpform"] input[name="replyFile"]')?.files?.length) return
   applyLayout()
   ensureSide()
   ensureHeaderBar()
@@ -354,7 +481,7 @@ function render() {
   }
   root.innerHTML = `
     <aside class="vc-rail">
-      <div class="vc-logo" title="Vision CRM">${icon("spark", 20)}</div>
+      <div class="vc-logo vc-brand-symbol" role="img" aria-label="VisionSync" title="VisionSync">${pluginBrand()}</div>
       ${rail}
       <div class="vc-sep"></div>
       <button class="vc-ico" data-act="kanban" title="Quadro Kanban no WhatsApp">${icon("columns", 19)}</button>
@@ -366,7 +493,7 @@ function render() {
     ${state.open ? `
     <section class="vc-panel">
       <header class="vc-head">
-        <div class="vc-title">${esc(active ? active.label : "")}</div>
+        <div class="vc-title">${esc(active ? active.label : "")}</div><small class="vc-version">v${SCRIPT_VERSION}</small>
         <button class="vc-x" data-act="close" title="Fechar">${icon("x", 18)}</button>
       </header>
       <div class="vc-body">${renderBody()}</div>
@@ -434,7 +561,7 @@ function renderConversa() {
   const name = esc(c.name || state.name || "Cliente")
   const head = `
     <div class="vc-person">
-      <div class="vc-avatar">${esc((fullName(c.name || state.name) || "?").slice(0, 1).toUpperCase())}</div>
+      <div class="vc-avatar">${avatarPreview.phone === state.phone && avatarPreview.url ? `<img src="${esc(avatarPreview.url)}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">` : esc((fullName(c.name || state.name) || "?").slice(0, 1).toUpperCase())}</div>
       <div><div class="vc-name">${name}</div><div class="vc-sub">${esc(state.phone)}</div></div>
     </div>`
 
@@ -686,6 +813,7 @@ function renderReminders() {
       <div class="vc-sec first">Novo lembrete / Agendar mensagem</div>
       <input name="text" maxlength="300" placeholder="O que lembrar? Ex.: cobrar o pacote" required />
       <textarea name="scheduledMessage" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional — usa variáveis como {primeiro_nome})"></textarea>
+      ${mediaPicker("reminder-media")}
       <input name="at" type="datetime-local" value="${tomorrow9()}" required />
       <div class="vc-actions">
         <button class="vc-btn">${icon("plus", 15)} Agendar</button>
@@ -698,7 +826,7 @@ function renderReminders() {
         <div class="vc-row flat"><div><b>${esc(r.text)}</b><span>${whenFmt(r.dueAt)}${r.snoozeCount ? " · adiado " + r.snoozeCount + "×" : ""}</span></div><span class="vc-badge ${r.state === "atrasado" ? "vencida" : r.state === "hoje" ? "pendente" : "cancelada"}">${r.state === "atrasado" ? "Atrasado" : r.state === "hoje" ? "Hoje" : "Próximo"}</span></div>
         ${r.scheduledMessage ? `<div class="vc-sched-msg"><small>Mensagem agendada:</small><p>${esc(r.scheduledMessage)}</p></div>` : ""}
         <div class="vc-actions">
-          ${r.scheduledMessage ? `<button class="vc-btn sm" data-rem-send="${esc(r.id)}">${icon("send", 13)} Enviar agora</button>` : ""}
+          ${r.scheduledMessage || r.scheduledReplyId ? `<button class="vc-btn sm" data-rem-send="${esc(r.id)}">${icon("send", 13)} Enviar agora</button>` : ""}
           <button class="vc-btn sm" data-rem-done="${esc(r.id)}">Feito</button>
           <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:1h">+1h</button>
           <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:amanha">Amanhã</button>
@@ -776,7 +904,8 @@ function syncReplyForm() {
     const texts = [...form.querySelectorAll("[data-seq-text]")].map((el) => el.value)
     const delays = [...form.querySelectorAll("[data-seq-delay]")].map((el) => Math.max(0, Math.min(60, parseInt(el.value, 10) || 0)))
     if (texts.length) {
-      rp.form.steps = texts.map((t, i) => ({ text: t, delaySec: delays[i] ?? 2 }))
+      const media = [...form.querySelectorAll("[data-seq-media]")].map(el => el.value)
+      rp.form.steps = texts.map((t, i) => ({ text: t, delaySec: delays[i] ?? 2, ...(media[i] ? { quickReplyId: media[i] } : {}) }))
     }
   }
 }
@@ -838,15 +967,15 @@ function renderReplyForm() {
   const isEdit = f.mode === "edit"
   const cats = [...new Set(state.replies.map((r) => r.category).filter(Boolean))]
   const steps = Array.isArray(f.steps) && f.steps.length ? f.steps : parseSequenceSteps(f.text)
-  const typeLabel = f.type === "CONTACT" ? "cartão de contato" : f.type === "SEQUENCE" ? "sequência de mensagens" : "mensagem de texto"
+  const typeLabel = ({ TEXT: "mensagem de texto", AUDIO: "mensagem de áudio", IMAGE: "imagem", CONTACT: "cartão de contato", SEQUENCE: "sequência de mensagens" })[f.type] || "resposta rápida"
   return `<form class="vc-card rp-form" data-form="rpform">
     <div class="vc-sec first">${isEdit ? "Editar" : "Nova"} ${typeLabel}</div>
     ${isEdit ? "" : `<div class="rp-seg wide">
         <button type="button" data-rp-act="type-TEXT" class="${f.type === "TEXT" ? "on" : ""}">Texto</button>
         <button type="button" data-rp-act="type-SEQUENCE" class="${f.type === "SEQUENCE" ? "on" : ""}">Sequência</button>
-        <button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button>
+        <button type="button" data-rp-act="type-AUDIO" class="${f.type === "AUDIO" ? "on" : ""}">Áudio</button><button type="button" data-rp-act="type-IMAGE" class="${f.type === "IMAGE" ? "on" : ""}">Imagem</button><button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button>
       </div>
-      <p class="vc-hint">Áudio, imagem, vídeo e documento: crie pelo painel web (é preciso enviar o arquivo).</p>`}
+      <p class="vc-hint">Texto, áudio e imagem podem ser criados aqui. Vídeo e documento: use o painel web.</p>`}
     <label class="rp-l">Nome <b>*</b></label>
     <input name="name" maxlength="80" placeholder="Como você vai achar essa mensagem depois" value="${esc(f.name)}" required />
     <label class="rp-l">Categoria <span>· só você vê (opcional)</span></label>
@@ -857,7 +986,10 @@ function renderReplyForm() {
       <textarea name="text" rows="6" maxlength="4096" placeholder="Digite sua mensagem aqui…" required>${esc(f.text)}</textarea>
       <div class="rp-vars">${VAR_CHIPS.map(([t, l]) => `<button type="button" data-rp-var="${esc(t)}">${esc(l)}</button>`).join("")}</div>
       <p class="vc-hint">Clique pra inserir. O cliente recebe tudo preenchido.</p>`
-    : f.type === "SEQUENCE" ? `
+    : ["AUDIO", "IMAGE"].includes(f.type) ? `
+      <label class="rp-l">Arquivo (até 4 MB)</label><input type="file" name="replyFile" accept="${f.type === "AUDIO" ? ".ogg,.mp3" : ".png,.jpg,.jpeg,.webp"}" required />
+      ${f.type === "IMAGE" ? `<label>Legenda</label><textarea name="text" maxlength="1024">${esc(f.text || "")}</textarea>` : `<label><input type="checkbox" name="asVoiceNote" /> Nota de voz (OGG/Opus e conector do servidor)</label>`}
+    ` : f.type === "SEQUENCE" ? `
       <label class="rp-l">Passos do roteiro / sequência <b>*</b></label>
       ${steps.map((st, idx) => `
         <div class="vc-seq-step">
@@ -866,7 +998,9 @@ function renderReplyForm() {
             <label>Aguardar <input type="number" data-seq-delay="${idx}" min="0" max="60" value="${esc(st.delaySec ?? 2)}" /> seg</label>
             ${steps.length > 1 ? `<button type="button" class="vc-link" data-rp-act="seq-del" data-rp-id="${idx}">Remover</button>` : ""}
           </div>
-          <textarea data-seq-text="${idx}" rows="3" maxlength="1500" placeholder="Mensagem do passo ${idx + 1} (aceita {primeiro_nome}, {saudacao}…)" required>${esc(st.text)}</textarea>
+
+          <select data-seq-media="${idx}"><option value="">Somente texto</option>${state.replies.filter(r => ["AUDIO", "IMAGE"].includes(r.type) && !r.viewOnce).map(r => `<option value="${esc(r.id)}" ${st.quickReplyId === r.id ? "selected" : ""}>${esc(r.name)} (${esc(r.type)})</option>`).join("")}</select>
+          <textarea data-seq-text="${idx}" rows="3" maxlength="1500" placeholder="Mensagem do passo ${idx + 1} (aceita {primeiro_nome}, {saudacao}…)">${esc(st.text)}</textarea>
         </div>
       `).join("")}
       <button type="button" class="vc-ghost" data-rp-act="seq-add">${icon("plus", 14)} Adicionar passo na sequência</button>`
@@ -939,12 +1073,21 @@ async function onReplyAction(act, id, btn) {
 }
 
 async function submitReplyForm(form) {
+  if (mediaUploadCount) return toast("Aguarde o arquivo terminar de carregar.")
   syncReplyForm()
   const f = rp.form
+  if (["AUDIO", "IMAGE"].includes(f.type)) {
+    try {
+      const file = form.querySelector('input[name="replyFile"]')?.files?.[0]
+      await uploadReplyFile(file, { name: f.name.trim(), category: f.category.trim(), shortcut: f.shortcut.trim(), type: f.type, text: f.text, asVoiceNote: !!form.querySelector('input[name="asVoiceNote"]')?.checked })
+      rp.form = null; render(); toast("Resposta rápida salva nos favoritos.")
+    } catch (error) { handleExtensionError(error); if (!extensionLife.expired) toast(error.message) }
+    return
+  }
   const body = { name: f.name.trim(), category: f.category.trim() || null, shortcut: f.shortcut.trim() || null }
   if (f.type === "TEXT") body.text = f.text
   else if (f.type === "SEQUENCE") {
-    const cleanSteps = (f.steps || []).map((s) => ({ text: String(s.text || "").trim(), delaySec: Math.max(0, Math.min(60, Number(s.delaySec) || 0)) })).filter((s) => s.text)
+    const cleanSteps = (f.steps || []).map((s) => ({ text: String(s.text || "").trim(), delaySec: Math.max(0, Math.min(60, Number(s.delaySec) || 0)), ...(s.quickReplyId ? { quickReplyId: s.quickReplyId } : {}) })).filter((s) => s.text || s.quickReplyId)
     if (!cleanSteps.length) { rp.msg = "Escreva pelo menos 1 passo na sequência."; return render() }
     body.text = JSON.stringify(cleanSteps)
   }
@@ -972,25 +1115,47 @@ function replyPreview(r) {
 }
 
 /** Usa uma resposta: texto, contato, sequência com delay (HotZapp) ou anexos. */
+let replyBusy = false
+const quickSendRequests = new Map()
 async function useReply(r) {
+  if (extensionLife.expired) return false
+  if (replyBusy) { toast("Aguarde a resposta atual terminar."); return false }
+  replyBusy = true
+  try { return await runReply(r) }
+  catch (error) { handleExtensionError(error); if (!extensionLife.expired) toast("Não foi possível preparar a resposta. Tente novamente."); return false }
+  finally { replyBusy = false }
+}
+async function runReply(r) {
+  if (extensionLife.expired) return false
   if (r.type === "SEQUENCE") {
-    const steps = parseSequenceSteps(r.text).filter((s) => s.text.trim())
+    const steps = parseSequenceSteps(r.text).filter((s) => s.text.trim() || s.quickReplyId)
     if (!steps.length) return toast("Esta sequência está vazia.")
     if (!getComposer()) return toast("Abra uma conversa pra disparar a sequência.")
     api("POST", `/api/crm/quick-replies/${r.id}/use`)
+    const phone = state.phone
     for (let i = 0; i < steps.length; i++) {
       const st = steps[i]
       if (st.delaySec > 0) {
         toast(`Sequência "${r.name}": passo ${i + 1}/${steps.length} em ${st.delaySec}s…`)
-        await new Promise((res) => setTimeout(res, st.delaySec * 1000))
+        await new Promise((res) => later(res, st.delaySec * 1000))
       } else {
         toast(`Sequência "${r.name}": enviando passo ${i + 1}/${steps.length}…`)
       }
+      if (extensionLife.expired || state.phone !== phone) { toast("Sequência interrompida: a conversa mudou."); return false }
+      if (st.quickReplyId) {
+        const media = state.replies.find(reply => reply.id === st.quickReplyId && ["AUDIO", "IMAGE"].includes(reply.type))
+        if (!media) { toast("Mídia do roteiro não encontrada. Atualize a biblioteca."); return false }
+        if (!prefs.sendDirect) { toast("Ative Mensagem sai direto para executar passos de mídia. Sequência interrompida."); return false }
+        const sent = await attachFile({ ...media, ...(media.type === "IMAGE" && st.text ? { text: st.text } : {}) })
+        if (!sent) return false
+        if (media.asVoiceNote) { toast("Nota de voz na fila do servidor. Confira o envio antes de continuar o roteiro."); return false }
+        continue
+      }
       const msg = renderVariables(st.text)
       if (!insertIntoComposer(msg)) return
-      await new Promise((res) => setTimeout(res, 180))
-      await clickSend(2000)
-      await new Promise((res) => setTimeout(res, 350))
+      await new Promise((res) => later(res, 180))
+      if (!await clickSend(2000)) { toast("Não confirmei o envio. Sequência interrompida."); return false }
+      await new Promise((res) => later(res, 350))
     }
     toast(`Sequência "${r.name}" enviada (${steps.length} mensagens)!`)
     return
@@ -1001,7 +1166,7 @@ async function useReply(r) {
     api("POST", `/api/crm/quick-replies/${r.id}/use`)
     // "Mensagem sai direto": igual ao Hotzapp, clicar na resposta já envia
     if (prefs.sendDirect) {
-      await new Promise((res) => setTimeout(res, 150))
+      await new Promise((res) => later(res, 150))
       await clickSend(1500)
     }
     return
@@ -1011,9 +1176,7 @@ async function useReply(r) {
 }
 
 function fileApi(path) {
-  return new Promise((resolve) => {
-    try { chrome.runtime.sendMessage({ type: "file", path }, (r) => resolve(r || { ok: false, status: 0 })) } catch { resolve({ ok: false, status: 0 }) }
-  })
+  return runtimeMessage({ type: "file", path })
 }
 
 /**
@@ -1024,8 +1187,18 @@ function fileApi(path) {
 async function attachFile(r) {
   const box = getComposer()
   if (!box) { toast("Abra uma conversa pra usar esta resposta."); return }
+  const targetPhone = state.phone
+  if (r.type === "AUDIO" && r.asVoiceNote) {
+    const key = `${r.id}:${targetPhone}`
+    if (!quickSendRequests.has(key)) quickSendRequests.set(key, crypto.randomUUID())
+    const result = await api("POST", `/api/crm/quick-replies/${r.id}/send`, { phone: targetPhone, requestId: quickSendRequests.get(key), approved: !!prefs.sendDirect })
+    if (result.status) quickSendRequests.delete(key)
+    if (!result.ok) { toast(result.data?.error || "Nota de voz exige conector no servidor conectado e destinatário autorizado."); return false }
+    toast(prefs.sendDirect ? "Nota de voz na fila do servidor. Confira o status em Envios no servidor." : "Nota de voz preparada para aprovação em Envios no servidor."); return !!prefs.sendDirect
+  }
   toast("Carregando o arquivo…")
   const res = await fileApi(`/api/crm/quick-replies/${r.id}/file`)
+  if (extensionLife.expired || state.phone !== targetPhone || getComposer() !== box) { if (!extensionLife.expired) toast("Conversa mudou. Arquivo não anexado."); return false }
   if (!res.ok || !res.base64) { toast("Não consegui baixar o arquivo. Confira a conexão."); return }
   let file
   try {
@@ -1042,20 +1215,25 @@ async function attachFile(r) {
     dt.items.add(file)
     handled = !box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }))
   } catch { handled = false }
-  if (!handled) { toast("O WhatsApp não aceitou o arquivo colado. Use o clipe de anexo e o arquivo do painel web."); return }
+  if (!handled) {
+    const input = [...document.querySelectorAll('#main input[type="file"]')].find(input => !input.accept || input.accept.includes(file.type) || (r.type === "IMAGE" && /image/.test(input.accept)) || (r.type === "AUDIO" && /audio/.test(input.accept)))
+    if (input) { try { const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; input.dispatchEvent(new Event("change", { bubbles: true })); handled = true } catch {} }
+  }
+  if (!handled) { toast("O WhatsApp não aceitou o anexo. Abra o clipe de anexos e tente novamente; nenhum envio foi confirmado."); return false }
 
   api("POST", `/api/crm/quick-replies/${r.id}/use`)
   // legenda: o WhatsApp abre a pré-visualização com o foco na legenda
   const caption = r.type === "AUDIO" || !r.text ? "" : renderVariables(r.text)
   if (prefs.sendDirect) {
     // espera a pré-visualização abrir, escreve a legenda e envia (igual ao Hotzapp)
-    await new Promise((res) => setTimeout(res, 1200))
-    if (caption) { try { document.execCommand("insertText", false, caption) } catch {} await new Promise((res) => setTimeout(res, 300)) }
-    const sent = await clickSend(5000)
-    toast(sent ? "Enviado." : "Coloquei o arquivo. Confira e envie.")
-    return
+    await new Promise((res) => later(res, 1200))
+    if (caption) { const editor = document.querySelector('[role="dialog"] [contenteditable="true"]'); if (!editor) { toast("Confira a prévia e escreva a legenda antes de enviar."); return false } editor.focus(); try { document.execCommand("insertText", false, caption) } catch {} await new Promise((res) => later(res, 300)) }
+    if (extensionLife.expired || state.phone !== targetPhone) return false
+    const sent = await clickSend(5000, true)
+    toast(sent ? "Envio solicitado ao WhatsApp." : "Arquivo preparado. Confira e envie; a sequência não continuará sozinha.")
+    return sent
   }
-  if (caption) setTimeout(() => { try { document.execCommand("insertText", false, caption) } catch {} }, 1200)
+  if (caption) later(() => { const editor = document.querySelector('[role="dialog"] [contenteditable="true"]'); if (editor && state.phone === targetPhone) { editor.focus(); try { document.execCommand("insertText", false, caption) } catch {} } }, 1200)
   toast(r.type === "AUDIO" ? "Áudio colocado. Confira e envie." : "Arquivo colocado. Confira a legenda e envie.")
 }
 
@@ -1119,7 +1297,7 @@ let waitList = []
 let waitHandled = {} // conversa -> hora da última mensagem que você marcou como "já resolvi"
 
 // A foto da cliente: se a imagem falhar em carregar, volta pra inicial do nome
-document.addEventListener("error", (e) => {
+listenGlobal(document, "error", (e) => {
   const img = e.target
   if (img && img.tagName === "IMG" && img.dataset && img.dataset.ini !== undefined) {
     const s = document.createElement("span")
@@ -1138,7 +1316,7 @@ function renderWaiting() {
   if (!el) {
     el = document.createElement("div")
     el.id = WAIT_ID
-    el.addEventListener("click", async (e) => {
+    el.addEventListener("click", guardedEvent(async (e) => {
       const open = e.target.closest("[data-wait-open]")
       if (open) {
         const r = await askBridge("open", 3000, open.getAttribute("data-wait-open"))
@@ -1160,7 +1338,7 @@ function renderWaiting() {
       if (!act) return
       if (act.getAttribute("data-wait-act") === "later") { waitSnoozeUntil = Date.now() + 30 * 60000; renderWaiting() }
       if (act.getAttribute("data-wait-act") === "panel" && state.apiUrl) window.open(state.apiUrl + "/dashboard/painel", "_blank")
-    })
+    }))
     document.body.appendChild(el)
   }
   const shown = waitList.slice(0, 8)
@@ -1251,7 +1429,7 @@ function ensureHeaderBar() {
       toggleHdrPop(b.dataset.h)
     })
     document.body.appendChild(el)
-    document.addEventListener("click", (e) => {
+    listenGlobal(document, "click", (e) => {
       if (hdrPop && !e.target.closest(`#${HDR_ID}, #${HPOP_ID}, #${SIDE_ID}`)) { hdrPop = null; renderHdrPop() }
     }, true)
   }
@@ -1301,8 +1479,9 @@ function renderHdrPop() {
   if (!pop) {
     pop = document.createElement("div")
     pop.id = HPOP_ID
-    pop.addEventListener("click", onHdrPopClick)
-    pop.addEventListener("submit", onHdrPopSubmit)
+    pop.addEventListener("click", guardedEvent(onHdrPopClick), true)
+    pop.addEventListener("submit", guardedEvent(onHdrPopSubmit), true)
+    pop.addEventListener("change", guardedEvent(onMediaUpload))
     document.body.appendChild(pop)
   }
   const r = anchor.getBoundingClientRect()
@@ -1316,6 +1495,7 @@ function renderHdrPop() {
     html = `<b>Agendar conversa / mensagem</b>
       <input id="vh-text" maxlength="300" placeholder="Lembrete (opcional). Ex.: cobrar o pacote" />
       <textarea id="vh-msg" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional)…"></textarea>
+      ${mediaPicker("vh-media")}
       <div class="vh-chips">${schedPresets().map(([l, d]) => `<button data-sched="${d.toISOString()}">${esc(l)}</button>`).join("")}</div>
       <form data-hform="sched">
         <input id="vh-at" type="datetime-local" value="${tomorrow9()}" required />
@@ -1372,7 +1552,7 @@ async function onHdrPopClick(e) {
   if (b.dataset.sched) {
     const t = document.getElementById("vh-text")
     const m = document.getElementById("vh-msg")
-    return scheduleChat(new Date(b.dataset.sched), t ? t.value : "", m ? m.value : "")
+    return scheduleChat(new Date(b.dataset.sched), t ? t.value : "", m ? m.value : "", document.getElementById("vh-media")?.value || null)
   }
   if (b.dataset.stage) return setStage(b.dataset.stage)
   const act = b.dataset.fact
@@ -1408,7 +1588,7 @@ async function onHdrPopSubmit(e) {
     if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return toast("Escolha um horário no futuro.")
     const t = document.getElementById("vh-text")
     const m = document.getElementById("vh-msg")
-    return scheduleChat(d, t ? t.value : "", m ? m.value : "")
+    return scheduleChat(d, t ? t.value : "", m ? m.value : "", document.getElementById("vh-media")?.value || null)
   }
   const name = String(new FormData(form).get("name") || "").trim()
   if (!name) return
@@ -1416,12 +1596,13 @@ async function onHdrPopSubmit(e) {
   if (res.ok && res.data) { state.lists.push(res.data); await setStage(res.data.id) }
 }
 
-async function scheduleChat(due, text, scheduledMessage = "") {
+async function scheduleChat(due, text, scheduledMessage = "", scheduledReplyId = null) {
+  if (mediaUploadCount) return toast("Aguarde o anexo terminar de carregar antes de agendar.")
   const id = await ensureContact()
   if (!id) return toast("Não consegui salvar esta cliente.")
   const label = (text || "").trim() || `Voltar a falar com ${firstName((state.contact && state.contact.name) || state.name) || "a cliente"}`
   const msgClean = (scheduledMessage || "").trim() || null
-  const res = await api("POST", "/api/crm/reminders", { contactId: id, text: label, scheduledMessage: msgClean, dueAt: due.toISOString() })
+  const res = await api("POST", "/api/crm/reminders", { contactId: id, text: label, scheduledMessage: msgClean, scheduledReplyId, dueAt: due.toISOString() })
   if (!res.ok) return toast((res.data && res.data.error) || "Não consegui agendar.")
   hdrPop = null
   renderHdrPop()
@@ -1445,10 +1626,13 @@ function endConversation() {
 const BAR_ICON = { TEXT: "text", CONTACT: "user", AUDIO: "mic", IMAGE: "image", VIDEO: "film", DOCUMENT: "file", SEQUENCE: "play" }
 
 // ── Preferências da barra (como a engrenagem do Hotzapp) ──
-const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {}, blur: false }
-
-function savePrefs() {
-  try { savePrefs({ vcrmPrefs: prefs }).catch(() => {}) } catch {}
+const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {}, blur: false, theme: "dark" }
+function pluginBrand() {
+  return '<img class="vc-brand-on-dark" src="' + chrome.runtime.getURL('brand/logo-small-wh.png') + '" alt="" /><img class="vc-brand-on-light" src="' + chrome.runtime.getURL('brand/logo-small-dark.png') + '" alt="" />'
+}
+function applyPluginTheme(theme) {
+  prefs.theme = ["light", "minimal"].includes(theme) ? theme : "dark"
+  document.documentElement.dataset.vcrmTheme = prefs.theme
 }
 
 /** Cor estável por categoria (a categoria é só um texto; a cor sai do nome). */
@@ -1465,13 +1649,15 @@ function findSendButton() {
 }
 
 /** Clica em enviar assim que o botão existir (espera até `timeoutMs`). Sem botão, tenta o Enter no campo. */
-async function clickSend(timeoutMs = 1500) {
+async function clickSend(timeoutMs = 1500, mediaOnly = false) {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
-    const b = findSendButton()
+    if (extensionLife.expired) return false
+    const b = mediaOnly ? document.querySelector('[role="dialog"] [data-icon="send"], [role="dialog"] [data-icon="wds-ic-send-filled"], [data-testid="media-send"]')?.closest('button, [role="button"]') : findSendButton()
     if (b) { b.click(); return true }
-    await new Promise((r) => setTimeout(r, 120))
+    await new Promise((r) => later(r, 120))
   }
+  if (mediaOnly) return false
   const box = getComposer()
   if (!box) return false
   box.focus()
@@ -1498,8 +1684,12 @@ function ensureBar() {
   if (!bar) {
     bar = document.createElement("div")
     bar.id = BAR_ID
-    bar.addEventListener("mousedown", (e) => e.preventDefault()) // não tira o foco do campo
-    bar.addEventListener("click", onBarClick)
+    bar.addEventListener("mousedown", (e) => { if (e.target.closest("button")) e.preventDefault() })
+    bar.addEventListener("wheel", e => {
+      const chips = bar.querySelector(".vb-chips")
+      if (chips && chips.scrollWidth > chips.clientWidth && e.deltaY && !e.deltaX) { chips.scrollLeft += e.deltaY; e.preventDefault() }
+    }, { passive: false })
+    bar.addEventListener("click", guardedEvent(onBarClick), true)
   }
   bar.style.display = ""
   const list = barReplies()
@@ -1520,7 +1710,7 @@ function ensureBar() {
     if (c) c.scrollLeft = scroll
   }
   // O Hotzapp põe a barra EMBAIXO do campo de mensagem
-  if (bar.parentNode !== footer.parentNode || bar.previousSibling !== footer) footer.parentNode.insertBefore(bar, footer.nextSibling)
+  if (bar.parentNode !== footer) footer.appendChild(bar)
 }
 
 function closeBarMenu() { const m = document.getElementById("vcrm-barmenu"); if (m) m.remove() }
@@ -1549,7 +1739,7 @@ function openBarMenu(anchor) {
   const r = anchor.getBoundingClientRect()
   m.style.left = Math.round(r.left) + "px"
   m.style.bottom = Math.round(window.innerHeight - r.top + 8) + "px"
-  setTimeout(() => document.addEventListener("click", function off(ev) {
+  later(() => listenGlobal(document, "click", function off(ev) {
     if (!ev.target.closest("#vcrm-barmenu, #vcrm-bar [data-bar='filter']")) { closeBarMenu(); document.removeEventListener("click", off, true) }
   }, true), 0)
 }
@@ -1632,33 +1822,36 @@ function hideMsgUi() {
   if (m) m.remove()
 }
 function hideMsgSoon() {
-  clearTimeout(msgHideTimer)
-  msgHideTimer = setTimeout(hideMsgUi, 350)
+  cancelLater(msgHideTimer)
+  msgHideTimer = later(hideMsgUi, 350)
 }
 
 function onMsgHover(e) {
+  if (extensionLife.expired) return
   if (state.status === "no_config" || state.status === "bad_token" || modalOpen()) return
   const t = e.target
-  if (t.closest && t.closest(`#${MSG_BTN_ID}, #${MSG_MENU_ID}`)) { clearTimeout(msgHideTimer); return }
-  const row = t.closest && t.closest('[class*="message-out"]')
+  if (t.closest && t.closest(`#${MSG_BTN_ID}, #${MSG_MENU_ID}`)) { cancelLater(msgHideTimer); return }
+  const row = t.closest && t.closest('[class*="message-out"], [class*="message-in"]')
   const main = document.querySelector("#main")
   if (!row || !main || !main.contains(row)) return hideMsgSoon()
   const text = messageText(row)
-  if (!text) return hideMsgSoon() // áudio, foto, figurinha: sem texto pra copiar
-  clearTimeout(msgHideTimer)
-  const first = row.querySelector(TEXT_SEL)
+  const messageId = (row.closest("[data-id]") || row.querySelector("[data-id]"))?.getAttribute("data-id")
+  if (!text && !messageId) return hideMsgSoon()
+  cancelLater(msgHideTimer)
+  const first = row.querySelector(TEXT_SEL) || row
   const r = first.getBoundingClientRect()
   let b = document.getElementById(MSG_BTN_ID)
   if (!b) {
     b = document.createElement("button")
     b.id = MSG_BTN_ID
     b.title = "Salvar como resposta rápida"
+    b.setAttribute("aria-label", "Salvar como resposta rápida")
     b.innerHTML = icon("zap", 16)
     b.addEventListener("mouseleave", hideMsgSoon)
     b.addEventListener("click", onMsgButtonClick)
     document.body.appendChild(b)
   }
-  msgHover = { text }
+  msgHover = { text, messageId }
   b.style.display = "grid"
   b.style.left = Math.max(8, Math.round(r.left - 52)) + "px"
   b.style.top = Math.round(r.top + r.height / 2 - 14) + "px"
@@ -1671,15 +1864,27 @@ function onMsgButtonClick() {
   if (m) return m.remove()
   m = document.createElement("div")
   m.id = MSG_MENU_ID
-  m.innerHTML = `<small>VISION CRM</small><button>${icon("text", 16)}<span>Salvar como resposta rápida</span><em>Texto</em></button>`
-  m.addEventListener("mouseenter", () => clearTimeout(msgHideTimer))
+  m.innerHTML = `<small>VisionSync</small><button>${icon("plus", 16)}<span>Salvar como resposta rápida</span><em>Texto / mídia</em></button>`
+  m.addEventListener("mouseenter", () => cancelLater(msgHideTimer))
   m.addEventListener("mouseleave", hideMsgSoon)
-  m.querySelector("button").addEventListener("click", () => {
-    const text = msgHover.text
+  m.querySelector("button").addEventListener("click", guardedEvent(async () => {
+    const selected = { ...msgHover }
     hideMsgUi()
-    openReplyForm({ text })
-    setTimeout(() => { const i = document.querySelector("#vcrm-root input[name='name']"); if (i) i.focus() }, 80)
-  })
+    if (!selected.messageId) { openReplyForm({ text: selected.text }); return }
+    const media = await askBridge("export-message", 15000, selected.messageId)
+    if (extensionLife.expired) return
+    if (media?.base64) {
+      const name = window.prompt("Nome para salvar esta resposta rápida favorita:", media.type === "AUDIO" ? "Áudio salvo" : "Imagem salva")
+      if (!name?.trim()) return
+      const saved = await runtimeMessage({ type: "upload-reply", name: name.trim().slice(0, 80), mediaType: media.type, mime: media.mime, base64: media.base64, asVoiceNote: media.asVoiceNote, caption: media.type === "IMAGE" ? (media.caption || "").slice(0, 1024) : "" })
+      toast(saved.ok ? "Mídia salva nas respostas rápidas e favoritas." : saved.data?.error || "Não consegui salvar esta mídia.")
+      if (saved.ok) { await loadReplies(); ensureBar() }
+      return
+    }
+    if (!selected.text) { toast(media?.error || "Não foi possível ler essa mensagem."); return }
+    openReplyForm({ text: selected.text })
+    later(() => { const i = document.querySelector("#vcrm-root input[name='name']"); if (i) i.focus() }, 80)
+  }))
   document.body.appendChild(m)
   const r = b.getBoundingClientRect()
   m.style.left = Math.round(Math.max(8, r.left - 20)) + "px"
@@ -1784,19 +1989,11 @@ async function onClick(e) {
     return
   }
   if (t.dataset.remSend) {
-    const r = state.reminders.find((x) => x.id === t.dataset.remSend)
-    if (r && r.scheduledMessage) {
-      const msg = renderVariables(r.scheduledMessage)
-      if (insertIntoComposer(msg)) {
-        if (prefs.sendDirect) {
-          await new Promise((res) => setTimeout(res, 160))
-          await clickSend(1800)
-        }
-        await api("PATCH", `/api/crm/reminders/${r.id}`, { action: "done" })
-        toast("Mensagem agendada enviada e lembrete concluído!")
-        refresh(true)
-        refreshInboxData()
-      }
+    const reminder = state.reminders.find(r => r.id === t.dataset.remSend)
+    if (reminder && await sendScheduledReminder(reminder)) {
+      await api("PATCH", `/api/crm/reminders/${reminder.id}`, { action: "done" })
+      toast("Envio solicitado. Confira a conversa ou a fila do servidor.")
+      void refresh(true); void refreshInboxData()
     }
     return
   }
@@ -1895,12 +2092,13 @@ async function onSubmit(e) {
   }
 
   if (kind === "reminder") {
+    if (mediaUploadCount) return msg("Aguarde o anexo terminar de carregar.")
     const text = String(f.get("text") || "").trim()
     const scheduledMessage = String(f.get("scheduledMessage") || "").trim() || null
     const at = new Date(String(f.get("at")))
     if (!text) return msg("Escreva o lembrete.")
     if (Number.isNaN(at.getTime())) return msg("Informe data e hora.")
-    const res = await api("POST", "/api/crm/reminders", { contactId: id, text, scheduledMessage, dueAt: at.toISOString() })
+    const res = await api("POST", "/api/crm/reminders", { contactId: id, text, scheduledMessage, scheduledReplyId: String(f.get("scheduledReplyId") || "") || null, dueAt: at.toISOString() })
     if (res.ok) { refreshInboxData(); return refresh(true) }
     return msg((res.data && res.data.error) || "Erro ao criar o lembrete.")
   }
@@ -1973,7 +2171,55 @@ async function loadShared() {
 }
 
 let seq = 0
+const avatarAttempts = new Map()
+let avatarPreview = { phone: "", url: "" }
+function previewContactAvatar(found) {
+  if (!found.phone || state.phone !== found.phone) return
+  const url = String(found.pic || "")
+  const safe = url.startsWith("blob:https://web.whatsapp.com/") || /^https:\/\/([a-z0-9-]+\.)*(whatsapp\.net|fbcdn\.net)\//i.test(url)
+  if (safe) avatarPreview = { phone: found.phone, url }
+  else if (avatarPreview.phone !== found.phone) avatarPreview = { phone: found.phone, url: "" }
+  const avatar = document.querySelector?.("#vcrm-root .vc-avatar")
+  if (safe && avatar && avatar.querySelector("img")?.getAttribute("src") !== url) avatar.innerHTML = `<img src="${esc(url)}" alt="Foto do contato" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">`
+}
+
+async function syncContactAvatar(found, contact, version) {
+  if (version !== seq || extensionLife.expired) return
+  previewContactAvatar(found)
+  const id = contact?.contactId
+  if (!id || !found.phone || !found.pic || version !== seq || state.phone !== found.phone) return
+  const attemptKey = `${state.apiUrl}|${id}`
+  if (Date.now() - (avatarAttempts.get(attemptKey) || 0) < 5 * 60 * 1000) return
+  avatarAttempts.set(attemptKey, Date.now())
+  try {
+    let base64 = ""
+    if (found.pic.startsWith("blob:https://web.whatsapp.com/")) {
+      const res = await fetch(found.pic, { signal: AbortSignal.timeout(10000) })
+      const blob = await res.blob()
+      if (!blob.size || blob.size > 512 * 1024) return
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ""
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+      base64 = btoa(binary)
+    } else {
+      const image = await runtimeMessage({ type: "avatar-fetch", url: found.pic })
+      if (!image?.ok || !image.base64) return
+      base64 = image.base64
+    }
+    // Recheck the active identity after the download, so rapid chat switches cannot mix photos.
+    const active = await resolveChat()
+    if (version !== seq || state.phone !== found.phone || active.phone !== found.phone || (found.key && active.key !== found.key)) return
+    const saved = await api("PUT", `/api/crm/contacts/${id}/avatar`, { base64 })
+    if (saved.ok && version === seq && state.phone === found.phone) {
+      contact.avatarUrl = saved.data.avatarUrl
+      const mime = base64.startsWith("iVBOR") ? "image/png" : base64.startsWith("UklG") ? "image/webp" : "image/jpeg"
+      avatarPreview = { phone: found.phone, url: `data:${mime};base64,${base64}` }
+      render()
+    }
+  } catch (error) { handleExtensionError(error) }
+}
 async function refresh(force) {
+  if (extensionLife.expired) return
   const hasChat = !!document.querySelector("#main")
   const found = hasChat ? await resolveChat() : { phone: null, name: null }
   const phone = found.phone
@@ -1983,10 +2229,12 @@ async function refresh(force) {
   const changed = phone !== state.phone
   state.phone = phone
   state.name = name
-  if (!force && !changed) return
+  previewContactAvatar(found)
+  if (!force && !changed) { void syncContactAvatar(found, state.contact, seq); return }
 
   const mine = ++seq
-  const cfg = await chrome.runtime.sendMessage({ type: "config-status" }).catch(() => ({}))
+  const cfg = await runtimeMessage({ type: "config-status" })
+  if (extensionLife.expired) return
   state.apiUrl = (cfg.apiUrl || "").replace(/\/+$/, "")
   if (!cfg.configured) { state.status = "no_config"; return render() }
 
@@ -2003,6 +2251,15 @@ async function refresh(force) {
   if (!(res.ok && res.data)) { state.status = "offline"; return render() }
 
   state.contact = res.data
+  if (res.data.avatarUrl && !found.pic) {
+    runtimeMessage({ type: "file", path: res.data.avatarUrl }).then(image => {
+      if (mine === seq && state.phone === phone && image?.ok && image.base64) {
+        avatarPreview = { phone, url: `data:image/webp;base64,${image.base64}` }
+        render()
+      }
+    }).catch(() => {})
+  }
+  void syncContactAvatar(found, res.data, mine)
   state.detail = null
   state.charges = []
   state.reminders = []
@@ -2062,7 +2319,7 @@ function ensureInboxTabs() {
   if (!bar) {
     bar = document.createElement("div")
     bar.id = INBOX_TABS_ID
-    bar.addEventListener("click", async (e) => {
+    bar.addEventListener("click", guardedEvent(async (e) => {
       const b = e.target.closest("button[data-ib-tab]")
       if (b) {
         const next = b.dataset.ibTab
@@ -2076,7 +2333,7 @@ function ensureInboxTabs() {
         inbox.stageId = st.dataset.ibStage
         ensureInboxTabs()
       }
-    })
+    }))
     pane.parentNode.insertBefore(bar, pane)
   }
 
@@ -2111,13 +2368,13 @@ function ensureInboxTabs() {
   if (!listEl) {
     listEl = document.createElement("div")
     listEl.id = INBOX_LIST_ID
-    listEl.addEventListener("click", async (e) => {
+    listEl.addEventListener("click", guardedEvent(async (e) => {
       const item = e.target.closest("[data-ib-open]")
       if (!item) return
       const key = item.getAttribute("data-ib-open")
       const r = await askBridge("open", 3500, key)
       if (!r || !r.opened) toast("Não consegui abrir direto. Use a busca do WhatsApp.")
-    })
+    }))
     pane.parentNode.insertBefore(listEl, pane)
   }
   pane.style.display = "none"
@@ -2204,7 +2461,7 @@ async function openKanbanModal() {
   modal.innerHTML = `<div class="vkb-box"><div class="vkb-top"><b>Carregando Quadro Kanban…</b><button class="vc-x" data-kb-close="1">${icon("x", 18)}</button></div></div>`
   document.body.appendChild(modal)
 
-  modal.addEventListener("click", async (e) => {
+  modal.addEventListener("click", guardedEvent(async (e) => {
     if (e.target === modal || e.target.closest("[data-kb-close]")) { modal.remove(); return }
     const openBtn = e.target.closest("[data-kb-open]")
     if (openBtn) {
@@ -2214,9 +2471,9 @@ async function openKanbanModal() {
       if (!r || !r.opened) toast("Não consegui abrir a conversa automaticamente.")
       return
     }
-  })
+  }))
 
-  modal.addEventListener("change", async (e) => {
+  modal.addEventListener("change", guardedEvent(async (e) => {
     const sel = e.target.closest("select[data-kb-move]")
     if (!sel) return
     const contactId = sel.getAttribute("data-kb-move")
@@ -2227,9 +2484,9 @@ async function openKanbanModal() {
     toast("Etapa atualizada!")
     renderKanbanModalContent()
     refresh(true)
-  })
+  }))
 
-  modal.addEventListener("submit", async (e) => {
+  modal.addEventListener("submit", guardedEvent(async (e) => {
     const form = e.target.closest("form[data-kb-newlist]")
     if (!form) return
     e.preventDefault()
@@ -2240,7 +2497,7 @@ async function openKanbanModal() {
       state.lists.push(res.data)
       renderKanbanModalContent()
     }
-  })
+  }))
 
   modal.addEventListener("input", (e) => {
     if (e.target.matches("[data-kb-search]")) {
@@ -2275,7 +2532,7 @@ async function renderKanbanModalContent(skipFetch = false) {
     <div class="vkb-box">
       <header class="vkb-top">
         <div>
-          <b>Quadro Kanban — Vision CRM &amp; HubSpot Pipeline</b>
+          <b>Quadro Kanban — VisionSync &amp; HubSpot Pipeline</b>
           <span class="vkb-kpis">
             <em>Contatos: <b>${f.totals.contacts}</b></em>
             <em>Em negociação: <b class="gold">${brl(f.totals.pipelineValue || 0)}</b></em>
@@ -2350,7 +2607,7 @@ async function renderKanbanModalContent(skipFetch = false) {
   modal.querySelectorAll("[data-kb-col]").forEach((colEl) => {
     colEl.addEventListener("dragover", (ev) => { ev.preventDefault(); colEl.classList.add("dragover") })
     colEl.addEventListener("dragleave", () => colEl.classList.remove("dragover"))
-    colEl.addEventListener("drop", async (ev) => {
+    colEl.addEventListener("drop", guardedEvent(async (ev) => {
       ev.preventDefault()
       colEl.classList.remove("dragover")
       const toListId = colEl.getAttribute("data-kb-col") || null
@@ -2359,7 +2616,7 @@ async function renderKanbanModalContent(skipFetch = false) {
       toast("Card movido!")
       renderKanbanModalContent()
       refresh(true)
-    })
+    }))
   })
 }
 
@@ -2390,7 +2647,7 @@ function openDialModal() {
   m.addEventListener("click", (e) => {
     if (e.target === m || e.target.closest("[data-dial-close]")) m.remove()
   })
-  m.querySelector("form").addEventListener("submit", async (e) => {
+  m.querySelector("form").addEventListener("submit", guardedEvent(async (e) => {
     e.preventDefault()
     const fd = new FormData(e.target)
     const raw = String(fd.get("phone") || "").replace(/\D/g, "")
@@ -2400,12 +2657,12 @@ function openDialModal() {
     m.remove()
     const r = await askBridge("open", 4000, full)
     if (r && r.opened) {
-      if (msg) setTimeout(() => insertIntoComposer(renderVariables(msg)), 900)
+      if (msg) later(() => insertIntoComposer(renderVariables(msg)), 900)
       toast("Conversa aberta!")
     } else {
       toast("Não consegui abrir sem recarregar. Verifique o número.")
     }
-  })
+  }))
   document.body.appendChild(m)
 }
 
@@ -2413,6 +2670,26 @@ function openDialModal() {
 
 const DUE_ALERT_ID = "vcrm-due-alert"
 const dismissedReminders = new Set()
+const sendingReminders = new Set()
+async function sendScheduledReminder(reminder) {
+  if (extensionLife.expired || sendingReminders.has(reminder.id)) return false
+  sendingReminders.add(reminder.id)
+  try {
+    const current = await resolveChat()
+    if (current.phone !== (reminder.contactPhone || state.phone)) { toast("Abra a conversa correta antes de enviar o agendamento."); return false }
+    if (reminder.scheduledReplyId) {
+      const response = await api("GET", "/api/crm/quick-replies")
+      const reply = response.ok && response.data?.find(r => r.id === reminder.scheduledReplyId && ["AUDIO", "IMAGE"].includes(r.type))
+      if (!reply) { toast("O anexo agendado não está disponível na biblioteca."); return false }
+      return await useReply({ ...reply, ...(reply.type === "IMAGE" && reminder.scheduledMessage ? { text: reminder.scheduledMessage } : {}) })
+    }
+    if (!reminder.scheduledMessage || !insertIntoComposer(renderVariables(reminder.scheduledMessage))) return false
+    if (!prefs.sendDirect) { toast("Mensagem preparada. Revise e envie; conclua o lembrete depois."); return false }
+    await new Promise(resolve => later(resolve, 160))
+    if (extensionLife.expired || (await resolveChat()).phone !== current.phone) return false
+    return await clickSend(1800)
+  } finally { sendingReminders.delete(reminder.id) }
+}
 
 function checkDueReminders() {
   let el = document.getElementById(DUE_ALERT_ID)
@@ -2438,24 +2715,20 @@ function checkDueReminders() {
       </div>
     </div>
     <div class="vdue-acts">
-      <button class="vc-btn sm" data-due-go="${esc(due.id)}">${icon("send", 13)} ${due.scheduledMessage ? "Abrir e Enviar" : "Abrir conversa"}</button>
+      <button class="vc-btn sm" data-due-go="${esc(due.id)}">${icon("send", 13)} ${due.scheduledMessage || due.scheduledReplyId ? "Abrir e Enviar" : "Abrir conversa"}</button>
       <button class="vc-ghost" data-due-dismiss="${esc(due.id)}">Depois</button>
     </div>
   `
   if (el.dataset.sig !== html) {
     el.innerHTML = html
     el.dataset.sig = html
-    el.onclick = async (e) => {
+    el.onclick = guardedEvent(async (e) => {
       const go = e.target.closest("[data-due-go]")
       if (go) {
         await askBridge("open", 3500, due.contactPhone)
-        if (due.scheduledMessage) {
-          await new Promise((res) => setTimeout(res, 900))
-          if (insertIntoComposer(renderVariables(due.scheduledMessage)) && prefs.sendDirect) {
-            await new Promise((res) => setTimeout(res, 200))
-            await clickSend(1800)
-          }
-        }
+        await new Promise(resolve => later(resolve, 900))
+        await refresh(true)
+        if (!await sendScheduledReminder(due)) return
         await api("PATCH", `/api/crm/reminders/${due.id}`, { action: "done" })
         dismissedReminders.add(due.id)
         await refreshInboxData()
@@ -2467,7 +2740,7 @@ function checkDueReminders() {
         dismissedReminders.add(due.id)
         checkDueReminders()
       }
-    }
+    })
   }
 }
 
@@ -2478,43 +2751,54 @@ function startObserver() {
   let timer = null
   const obs = new MutationObserver((muts) => {
     if (muts.every((m) => m.target.closest && m.target.closest(`#${ROOT_ID}, #${BAR_ID}, #${POP_ID}, #${INBOX_TABS_ID}, #${INBOX_LIST_ID}, #${KANBAN_MODAL_ID}`))) return
-    clearTimeout(timer)
-    timer = setTimeout(() => { refresh(false); ensureBar(); ensureSide(); ensureHeaderBar(); ensureInboxTabs() }, 400)
+    cancelLater(timer)
+    timer = later(() => { refresh(false); ensureBar(); ensureSide(); ensureHeaderBar(); ensureInboxTabs() }, 400)
   })
   obs.observe(root, { childList: true, subtree: true })
+  extensionLife.observers.add(obs)
   // janelas (modais) às vezes entram direto no <body>: esconde a barrinha e o aviso na hora
   let bodyTimer = null
-  new MutationObserver((muts) => {
+  const bodyObserver = new MutationObserver((muts) => {
     if (muts.every((m) => [...m.addedNodes, ...m.removedNodes].every((n) => n.id === ROOT_ID || n.id === BAR_ID || n.id === POP_ID || n.id === SIDE_ID || n.id === WAIT_ID))) return
-    clearTimeout(bodyTimer)
-    bodyTimer = setTimeout(() => { ensureSide(); ensureHeaderBar(); renderWaiting() }, 150)
-  }).observe(document.body, { childList: true })
-  window.addEventListener("resize", () => { ensureSide(); ensureHeaderBar() })
-  document.addEventListener("mouseover", onMsgHover, true)
-  document.addEventListener("input", onComposerInput, true)
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePop() }, true)
+    cancelLater(bodyTimer)
+    bodyTimer = later(() => { ensureSide(); ensureHeaderBar(); renderWaiting() }, 150)
+  })
+  bodyObserver.observe(document.body, { childList: true })
+  extensionLife.observers.add(bodyObserver)
+  listenGlobal(window, "resize", () => { ensureSide(); ensureHeaderBar() })
+  listenGlobal(document, "mouseover", onMsgHover, true)
+  listenGlobal(document, "input", onComposerInput, true)
+  listenGlobal(document, "keydown", (e) => { if (e.key === "Escape") closePop() }, true)
   // token/URL mudaram no popup: recarrega
-  setInterval(() => { if (!document.hidden) refresh(true) }, 30000)
+  repeat(() => { if (!document.hidden) refresh(true) }, 30000)
 }
 
 function init() {
+  const token = `${SCRIPT_VERSION}:${Math.random()}`
+  document.dispatchEvent(new CustomEvent("vcrm-dispose", { detail: token }))
+  listenGlobal(document, "vcrm-dispose", event => { if (event.detail !== token) invalidateExtension(true) })
+  for (const element of document.querySelectorAll('[id^="vcrm-"]')) element.remove()
   ensureRoot()
+  document.getElementById(ROOT_ID).dataset.vcrmBuild = SCRIPT_VERSION
   render()
   startObserver()
   refresh(true)
   // aviso de quem espera resposta: confere ao abrir (depois que o WhatsApp carregou) e a cada minuto
-  chrome.runtime.sendMessage({ type: "prefs-get" }).then((c) => {
+  runtimeMessage({ type: "prefs-get" }).then((c) => {
     waitHandled = c.vcrmHandled || {}
     hdrHidden = !!c.vcrmHdrHidden
     if (c.vcrmPrefs) Object.assign(prefs, c.vcrmPrefs)
+    applyPluginTheme(prefs.theme)
     document.documentElement.classList.toggle("vcrm-blur", !!prefs.blur)
     ensureHeaderBar(); ensureSide(); ensureBar(); ensureInboxTabs()
   }).catch(() => {})
-  setTimeout(() => { checkWaiting(); refreshInboxData(true) }, 4000)
-  setInterval(checkWaiting, 5000) // lê só a memória do WhatsApp: é leve, e mantém a lista em tempo real
-  setInterval(() => refreshInboxData(false), 25000)
+  later(() => { checkWaiting(); refreshInboxData(true) }, 4000)
+  repeat(checkWaiting, 5000) // lê só a memória do WhatsApp: é leve, e mantém a lista em tempo real
+  repeat(() => refreshInboxData(false), 25000)
+  chrome.runtime.onMessage?.addListener(message => { if (message?.type === "theme") applyPluginTheme(message.theme) })
+  repeat(() => { try { if (!chrome.runtime.id) invalidateExtension() } catch (error) { handleExtensionError(error) } }, 2000)
 }
 
-const boot = setInterval(() => {
-  if (document.querySelector("#app")) { clearInterval(boot); init() }
+const boot = repeat(() => {
+  if (document.querySelector("#app")) { cancelRepeat(boot); init() }
 }, 500)

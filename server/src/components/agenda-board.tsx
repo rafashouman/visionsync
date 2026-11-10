@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react"
 import { AlarmClock, BellPlus, Calendar, Check, ExternalLink, MessageSquare } from "lucide-react"
 import type { ReminderView } from "@/lib/reminders"
+import type { QuickReplyView } from "@/lib/quick-replies"
 import { whatsappLink } from "@/lib/charge-message"
 import { PageHeader } from "@/components/page-header"
-import { btn, btnSm, card, chip, errorText, field, ghost, ghostSm, inner, label } from "@/lib/ui"
+import { btn, btnSm, card, chip, errorText, field, ghost, ghostSm, helper, inner, label } from "@/lib/ui"
 
 const TZ = "America/Sao_Paulo"
 const fmtDayHeader = (dayStr: string) => {
@@ -77,8 +78,8 @@ export function AgendaBoard() {
   }
 
   const all = (items ?? []).filter((r) => {
-    if (filter === "mensagens") return Boolean(r.scheduledMessage)
-    if (filter === "lembretes") return !r.scheduledMessage
+    if (filter === "mensagens") return Boolean(r.scheduledMessage || r.scheduledReplyId)
+    if (filter === "lembretes") return !r.scheduledMessage && !r.scheduledReplyId
     return true
   })
 
@@ -89,7 +90,7 @@ export function AgendaBoard() {
     byDay.get(k)!.push(r)
   }
   const days = [...byDay.keys()].sort()
-  const schedMsgCount = (items ?? []).filter((r) => Boolean(r.scheduledMessage)).length
+  const schedMsgCount = (items ?? []).filter((r) => Boolean(r.scheduledMessage || r.scheduledReplyId)).length
 
   return (
     <>
@@ -214,13 +215,13 @@ export function AgendaBoard() {
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <a
-                      href={whatsappLink(r.contactPhone, r.scheduledMessage || "")}
+                      href={whatsappLink(r.contactPhone, r.scheduledReplyId ? "" : r.scheduledMessage || "")}
                       target="_blank"
                       rel="noreferrer"
                       style={{ ...btnSm, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
                     >
                       <MessageSquare size={13} />
-                      {r.scheduledMessage ? "Enviar no WhatsApp" : "Abrir WhatsApp"}
+                      {r.scheduledReplyId ? "Abrir conversa e usar o plugin para anexar" : r.scheduledMessage ? "Enviar no WhatsApp" : "Abrir WhatsApp"}
                     </a>
                     <a
                       href={gcalUrl(r)}
@@ -250,6 +251,8 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const [contact, setContact] = useState<ContactHit | null>(null)
   const [text, setText] = useState("")
   const [scheduledMessage, setScheduledMessage] = useState("")
+  const [scheduledReplyId, setScheduledReplyId] = useState("")
+  const [mediaReplies, setMediaReplies] = useState<QuickReplyView[]>([])
   const [at, setAt] = useState(() => {
     const d = new Date(Date.now() + 86400_000)
     d.setHours(9, 0, 0, 0)
@@ -258,6 +261,7 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   })
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  useEffect(() => { void call("GET", "/api/crm/quick-replies").then((rows: QuickReplyView[]) => setMediaReplies(rows.filter(r => ["AUDIO", "IMAGE"].includes(r.type) && !r.viewOnce))).catch(() => setErr("Não foi possível carregar a biblioteca de mídia.")) }, [])
 
   useEffect(() => {
     if (contact) return
@@ -283,6 +287,7 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         contactId: contact.id,
         text: text.trim(),
         scheduledMessage: scheduledMessage.trim() || null,
+        scheduledReplyId: scheduledReplyId || null,
         dueAt: d.toISOString(),
       })
       await onSaved()
@@ -296,7 +301,7 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   return (
     <div style={{ ...card, padding: 18, display: "flex", flexDirection: "column", gap: 10 }}>
       {contact ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
           <b style={{ color: "var(--strong)" }}>{contact.name}</b>
           <span style={{ color: "var(--muted)", fontSize: 13 }}>{contact.phone}</span>
           <button onClick={() => setContact(null)} style={{ ...ghostSm, marginLeft: "auto" }}>Trocar cliente</button>
@@ -319,7 +324,7 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 220px", gap: 10 }}>
+      <div className="vs-schedule-fields">
         <div>
           <label style={label}>Compromisso / Lembrete</label>
           <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex.: Retorno sobre proposta comercial" maxLength={300} style={field} />
@@ -340,8 +345,12 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         style={{ ...field, resize: "vertical", fontFamily: "inherit" }}
       />
 
+      <label style={label}>Áudio ou imagem da biblioteca (opcional)
+        <select value={scheduledReplyId} onChange={e => setScheduledReplyId(e.target.value)} style={field}><option value="">Sem anexo</option>{mediaReplies.map(r => <option key={r.id} value={r.id}>{r.name} ({r.type === "AUDIO" ? "Áudio" : "Imagem"})</option>)}</select>
+      </label>
+      <p style={helper}>Cadastre arquivos em Respostas rápidas. Este agendamento é assistido pela extensão e usa a versão atual da mídia na biblioteca. Para envio automático, use Envios no servidor. Texto com áudio deve ser um passo separado.</p>
       {err && <p style={errorText}>{err}</p>}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <button onClick={save} disabled={busy} style={btn}>{busy ? "Agendando…" : "Salvar na Agenda"}</button>
         <button onClick={onClose} style={ghost}>Cancelar</button>
       </div>

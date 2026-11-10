@@ -6,8 +6,25 @@ const token = input("token")
 const save = document.getElementById("save") as HTMLButtonElement
 const message = document.getElementById("msg")!
 function show(text: string, error = false) { message.textContent = text; message.className = `msg ${error ? "err" : "ok"}` }
+const theme = document.getElementById("theme") as HTMLSelectElement
+function applyTheme(value: string) { document.documentElement.dataset.vcrmTheme = ["light", "minimal"].includes(value) ? value : "dark" }
+const storedPreferences = (value: unknown): Record<string, unknown> => value && typeof value === "object" ? value as Record<string, unknown> : {}
+chrome.storage.local.get("vcrmPrefs").then(cfg => { theme.value = ["light", "minimal"].includes(String(storedPreferences(cfg.vcrmPrefs).theme)) ? String(storedPreferences(cfg.vcrmPrefs).theme) : "dark"; applyTheme(theme.value) }).catch(() => show("Não foi possível carregar a aparência.", true))
+theme.addEventListener("change", async () => {
+  try {
+    applyTheme(theme.value)
+    const cfg = await chrome.storage.local.get("vcrmPrefs")
+    await chrome.storage.local.set({ vcrmPrefs: { ...storedPreferences(cfg.vcrmPrefs), theme: theme.value } })
+    const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" })
+    await Promise.allSettled(tabs.filter(t => t.id !== undefined).map(tab => chrome.tabs.sendMessage(tab.id!, { type: "theme", theme: theme.value })))
+  } catch { show("Não foi possível aplicar o tema.", true) }
+})
+document.getElementById("repair")!.addEventListener("click", async () => {
+  try { const result = await chrome.runtime.sendMessage({ type: "repair-tabs" }); show(result?.ok ? (result.repaired ? "Painel reativado nas abas abertas." : "Abra o WhatsApp Web para usar o painel.") : "Recarregue a aba do WhatsApp para concluir.", !result?.ok) }
+  catch { show("Recarregue a extensão e tente novamente.", true) }
+})
 
-chrome.storage.local.get(["apiUrl"]).then(cfg => { url.value = typeof cfg.apiUrl === "string" ? cfg.apiUrl : "http://localhost:3001" })
+chrome.storage.local.get(["apiUrl"]).then(cfg => { url.value = typeof cfg.apiUrl === "string" ? cfg.apiUrl : "http://localhost:3001" }).catch(() => show("Reabra a extensão para carregar a configuração.", true))
 token.placeholder = "Cole um novo token ou mantenha o atual"
 save.addEventListener("click", async () => {
   save.disabled = true

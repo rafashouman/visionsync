@@ -2,11 +2,13 @@
 
 Versão de revisão: 1.3 · 9 de novembro de 2026.
 
+Atualização visual 1.4: quatro temas implementados, com escuro original como padrão. Os guias consolidados da primeira etapa são o [documento de desenvolvimento](04-documento-de-desenvolvimento.md) e o [roadmap](05-roadmap.md). As especificações e o histórico abaixo foram preservados.
+
 Uma primeira entrega de frontend, plugin e adaptação ao MongoDB já foi implementada. O inventário abaixo registra a base original, e o roadmap continua sendo escopo de destino. Consulte [estado da implementação](03-estado-da-implementacao.md) para evidências e pendências; o MVP completo ainda não foi concluído.
 
 Stack de destino definida pelo usuário: **Next.js + MongoDB, com preferência por TypeScript**. JavaScript pode ser usado quando for melhor para um caso concreto; outras tecnologias só quando realmente necessárias, com justificativa. PostgreSQL/Prisma 7 descrevem a origem. O código atual já usa MongoDB com Prisma 6.19; a troca para driver oficial e a migração de dados reais continuam pendentes.
 
-Documento complementar a [Arquitetura e Diretrizes](01-arquitetura-e-diretrizes.md). Escopo: evolução do protótipo Vision CRM em `C:\@sites\visionsync`, referido como NexuSync nos documentos de origem. Nome comercial permanece pendente; não renomear repositório ou produto durante implementação sem decisão explícita.
+Documento complementar a [Arquitetura e Diretrizes](01-arquitetura-e-diretrizes.md). Escopo: evolução do protótipo VisionSync em `C:\@sites\visionsync`, referido como NexuSync nos documentos de origem. Nome comercial permanece pendente; não renomear repositório ou produto durante implementação sem decisão explícita.
 
 ## Entrega incremental 1.3 — 09/11/2026
 

@@ -10,6 +10,7 @@ export type ReminderView = {
   contactPhone: string
   text: string
   scheduledMessage: string | null
+  scheduledReplyId?: string | null
   dueAt: string // ISO
   doneAt: string | null
   snoozeCount: number // quantas vezes foi adiado ("Adiadas")
@@ -32,7 +33,7 @@ export async function listReminders(userId: string, opts: { contactId?: string; 
     where: {
       userId,
       ...(opts.contactId && { contactId: opts.contactId }),
-      doneAt: opts.done ? { not: null } : null,
+      ...(opts.done ? { doneAt: { not: null } } : { OR: [{ doneAt: null }, { doneAt: { isSet: false } }] }),
     },
     include: { contact: { select: { name: true, phone: true } } },
     orderBy: opts.done ? { doneAt: "desc" } : { dueAt: "asc" },
@@ -45,6 +46,7 @@ export async function listReminders(userId: string, opts: { contactId?: string; 
     contactPhone: r.contact.phone,
     text: r.text,
     scheduledMessage: r.scheduledMessage ?? null,
+    scheduledReplyId: r.scheduledReplyId ?? null,
     dueAt: r.dueAt.toISOString(),
     doneAt: r.doneAt?.toISOString() ?? null,
     snoozeCount: r.snoozeCount,

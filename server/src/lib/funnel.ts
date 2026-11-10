@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client"
+import { avatarUrl } from "@/lib/contact-avatar"
 import { sumMoney } from "@/lib/money"
 import { prisma } from "@/lib/prisma"
 import { dayKey } from "@/lib/dates"
@@ -7,6 +8,7 @@ import { pendingByContact, summarizeCharges } from "@/lib/charges"
 export type NextStepState = "atrasado" | "hoje" | "futuro" | "nenhum"
 
 export type FunnelCard = {
+  avatarUrl?: string | null
   id: string
   name: string
   phone: string
@@ -107,7 +109,7 @@ export async function buildFunnel(userId: string, options: FunnelOptions = {}): 
   const result = columns.map(({ list, total, contacts }) => ({ id: list.id, name: list.name, color: list.color, total,
     cards: contacts.map(c => {
       const a = stats.get(c.id)
-      return { id: c.id, name: c.name, phone: c.phone, purchases: a?._count._all ?? 0,
+      return { id: c.id, name: c.name, phone: c.phone, avatarUrl: avatarUrl(c), purchases: a?._count._all ?? 0,
         totalSpent: sumMoney([a?._sum.amount ?? 0]), lastPurchaseAt: a?._max.purchasedAt?.toISOString() ?? null,
         nextStep: c.nextStep, nextStepAt: c.nextStepAt?.toISOString() ?? null, nextStepState: nextStepState(c.nextStep, c.nextStepAt, now),
         lastActivityAt: c.lastActivityAt.toISOString(), daysIdle: Math.max(0, Math.floor((now.getTime() - c.lastActivityAt.getTime()) / DAY_MS)),

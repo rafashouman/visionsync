@@ -13,11 +13,11 @@ export const TYPE_INFO: Record<QuickReplyKind, { label: string; hint: string; av
   SEQUENCE: { label: "Sequência", hint: "Várias mensagens enviadas em sequência com intervalo", available: true },
 }
 
-/* ───────────── Arquivos (guardados no banco) ───────────── */
+/* ───────────── Arquivos (disco privado; leitura legada do banco) ───────────── */
 
-/** Limite por arquivo. Vem do limite de 4,5 MB por envio da Vercel, com folga. */
+/** Limite por arquivo e por envio entre CRM e extensão. */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024
-/** Limite de arquivos por conta. O banco grátis tem 500 MB no total. */
+/** Limite de anexos de respostas rápidas por conta. */
 export const MAX_ACCOUNT_BYTES = 40 * 1024 * 1024
 /** Limite de legenda do WhatsApp. */
 export const MAX_CAPTION = 1024

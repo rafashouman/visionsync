@@ -7,8 +7,10 @@ node_modules/
 *.tsbuildinfo
 next-env.d.ts
 extension/dist/
+extension/*.pem
 coverage/
 *.log
 .vercel/
 .mongodb-data/
+storage/
 *.zip

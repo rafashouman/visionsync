@@ -3,26 +3,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vision CRM</title>
+  <title>VisionSync</title>
+  <link rel="stylesheet" href="../panel.css" />
   <style>
-    body { width: 300px; margin: 0; padding: 18px; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8eefc;
-      background: radial-gradient(400px 200px at 90% -10%, rgba(59,130,246,.25), transparent 60%), #040a1c; }
-    h1 { font-size: 16px; margin: 0 0 4px; color: #fff; } h1 b { color: #e0245e; }
-    p.sub { font-size: 12px; color: #8ea0c8; margin: 0 0 14px; }
-    label { display: block; font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #c9d5f2; }
-    input { width: 100%; box-sizing: border-box; color: #e8eefc; background: rgba(255,255,255,.07);
-      border: 1px solid rgba(143,163,214,.25); border-radius: 8px; padding: 8px 10px; font-size: 13px; outline: none; }
-    input:focus { border-color: #e0245e; box-shadow: 0 0 0 3px rgba(224,36,94,.22); }
-    button { width: 100%; margin-top: 14px; background: #e0245e; color: #fff; border: none; border-radius: 10px;
-      padding: 10px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 0 16px rgba(224,36,94,.45); }
-    button:hover { filter: brightness(1.12); }
-    .msg { font-size: 12px; margin-top: 10px; min-height: 16px; }
-    .ok { color: #7ef0c0; } .err { color: #ff8a8a; }
-  </style>
+body { width:320px; margin:0; padding:18px; box-sizing:border-box; font:13px/1.5 'Segoe UI',system-ui,sans-serif; color:var(--v-text); background:var(--v-bg); }
+h1 { font-size:20px; margin:0; color:var(--v-text); } h1 b { color:var(--v-accent-text); }
+p.sub { color:var(--v-gold); margin:4px 0 16px; font-size:12px; }
+label { display:block; margin:12px 0 5px; color:var(--v-text-2); font-weight:600; }
+input,select { width:100%; box-sizing:border-box; padding:10px; color:var(--v-text); background:var(--v-field); border:1px solid var(--v-line); border-radius:8px; font:inherit; }
+button { width:100%; padding:11px; margin-top:14px; border:0; border-radius:10px; background:var(--v-accent); color:var(--v-on-accent); font:inherit; font-weight:600; cursor:pointer; }
+#repair { color:var(--v-accent-text); background:var(--v-field); border:1px solid var(--v-line); }
+button:disabled { opacity:.6; cursor:wait; } :focus-visible { outline:2px solid var(--v-gold); outline-offset:2px; }
+.msg { min-height:18px; margin-top:12px; } .ok {color:var(--v-ok);} .err {color:var(--v-danger);}
+</style>
 </head>
 <body>
-  <h1>Vision <b>CRM</b></h1>
-  <p class="sub">Conecte ao seu Vision CRM.</p>
+  <h1 class="vc-popup-brand" aria-label="VisionSync"><img class="vc-brand-on-dark" src="../brand/logo-small-wh.png" alt="" /><img class="vc-brand-on-light" src="../brand/logo-small-dark.png" alt="" /></h1>
+  <p class="sub">VisionSync 0.20.4</p>
+  <label for="theme">Aparência</label>
+  <select id="theme"><option value="dark">Vision escuro</option><option value="light">Vision claro</option><option value="minimal">Vision minimalista</option></select>
 
   <label for="apiUrl">URL do sistema</label>
   <input id="apiUrl" type="text" placeholder="http://localhost:3001" />
@@ -31,6 +30,7 @@
   <input id="token" type="password" placeholder="crm_..." />
 
   <button id="save">Salvar e testar conexão</button>
+  <button id="repair" type="button">Reativar nas abas do WhatsApp</button>
   <div class="msg" id="msg"></div>
 
   <script src="popup.js"></script>

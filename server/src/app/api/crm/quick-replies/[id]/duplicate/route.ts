@@ -4,6 +4,7 @@ import { getAuthUser } from "@/lib/crm-auth"
 import { MAX_QUICK_REPLIES, toView } from "@/lib/quick-replies"
 import { isMediaKind } from "@/lib/quick-reply-types"
 import { accountQuotaError } from "@/lib/quick-reply-files"
+import { isMissingFile, readStoredFile, removeStoredFile, storeFile } from "@/lib/local-storage"
 
 // POST /api/crm/quick-replies/[id]/duplicate -> cópia sem atalho (o atalho é único),
 // com uso zerado e sem favorito. Nos tipos com arquivo, o arquivo também é copiado
@@ -26,16 +27,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   let fileData: Uint8Array<ArrayBuffer> | null = null
   if (isMediaKind(src.type)) {
-    const f = await prisma.quickReplyFile.findUnique({ where: { quickReplyId: src.id }, select: { data: true } })
+    const f = await prisma.quickReplyFile.findUnique({ where: { quickReplyId: src.id }, select: { data: true, storageKey: true } })
     if (!f) return NextResponse.json({ error: "O arquivo desta resposta não foi encontrado." }, { status: 409 })
-    fileData = f.data
-    const quota = await accountQuotaError(user.id, src.mediaSize ?? f.data.length)
+    try { fileData = f.storageKey ? await readStoredFile(f.storageKey) : f.data }
+    catch (error) { if (isMissingFile(error)) return NextResponse.json({ error: "Arquivo não encontrado." }, { status: 409 }); throw error }
+    if (!fileData) return NextResponse.json({ error: "Arquivo não encontrado." }, { status: 409 })
+    const quota = await accountQuotaError(user.id, src.mediaSize ?? fileData.length)
     if (quota) return NextResponse.json({ error: quota }, { status: 400 })
   }
 
   const last = await prisma.quickReply.aggregate({ where: { userId: user.id }, _max: { position: true } })
 
-  const copy = await prisma.quickReply.create({
+  const storageKey = fileData ? await storeFile(user.id, "files", fileData) : null
+  let copy
+  try { copy = await prisma.quickReply.create({
     data: {
       userId: user.id,
       type: src.type,
@@ -50,8 +55,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       viewOnce: src.viewOnce,
       asVoiceNote: src.asVoiceNote,
       position: (last._max.position ?? -1) + 1,
-      ...(fileData ? { file: { create: { data: fileData } } } : {}),
+      ...(storageKey ? { file: { create: { storageKey } } } : {}),
     },
-  })
+  }) } catch (error) { await removeStoredFile(storageKey); throw error }
   return NextResponse.json(toView(copy), { status: 201 })
 }

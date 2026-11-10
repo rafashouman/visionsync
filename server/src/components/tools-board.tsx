@@ -28,7 +28,7 @@ export function ToolsBoard() {
   const cleanMyDigits = myPhone.replace(/\D/g, "")
   const generatedUrl = cleanMyDigits.length >= 10 ? whatsappLink(cleanMyDigits, welcomeMsg) : ""
   const widgetHtml = generatedUrl
-    ? `<!-- Botão Flutuante WhatsApp · Vision CRM -->
+    ? `<!-- Botão Flutuante WhatsApp · VisionSync -->
 <a href="${generatedUrl}" target="_blank" rel="noopener noreferrer" style="position:fixed;bottom:22px;right:22px;z-index:99999;display:inline-flex;align-items:center;gap:10px;padding:12px 20px;border-radius:999px;background:#25D366;color:#fff;font-family:system-ui,sans-serif;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 8px 24px rgba(37,211,102,0.4);">
   <span>💬 ${btnLabel}</span>
 </a>`

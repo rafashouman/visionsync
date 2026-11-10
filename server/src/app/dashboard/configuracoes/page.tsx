@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Copy, Puzzle, RefreshCw } from "lucide-react"
+import { ThemePicker } from "@/components/theme-picker"
 import { MetaCard } from "@/components/meta-card"
 import { PageHeader } from "@/components/page-header"
 import { btn, card, field, label } from "@/lib/ui"
@@ -62,7 +63,9 @@ export default function ConfiguracoesPage() {
 
   return (
     <div style={{ maxWidth: 720, display: "flex", flexDirection: "column", gap: 16 }}>
-      <PageHeader title="Configurações" subtitle="Conecte a extensão do Chrome e o seu Pixel do Meta." />
+      <PageHeader title="Configurações" subtitle="Personalize seu ambiente e gerencie suas conexões." />
+
+      <section style={{ ...card, padding: 24 }} aria-label="Preferências de aparência"><ThemePicker /></section>
 
       <div style={{ ...card, padding: 24 }}>
         <h2 style={{ fontSize: 17, margin: "0 0 4px", color: "var(--strong)", display: "flex", alignItems: "center", gap: 8 }}>

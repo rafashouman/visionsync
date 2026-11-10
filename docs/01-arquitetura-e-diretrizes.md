@@ -2,6 +2,8 @@
 
 Versão de revisão: 1.3 · 9 de novembro de 2026 · Base: `C:\@sites\visionsync`.
 
+Atualização visual 1.4: quatro temas implementados, com escuro original como padrão. Os guias consolidados da primeira etapa são o [documento de desenvolvimento](04-documento-de-desenvolvimento.md) e o [roadmap](05-roadmap.md). As especificações e o histórico abaixo foram preservados.
+
 Atualização após a primeira implementação: frontend e plugin foram evoluídos e a persistência foi adaptada ao MongoDB, mantendo temporariamente Prisma 6.19 para compatibilidade dos módulos existentes. O inventário da seção 1 descreve o protótipo anterior; o restante é a especificação de destino. Consulte [estado da implementação](03-estado-da-implementacao.md) para distinguir entregue e pendente.
 
 Decisão do usuário nesta revisão: Next.js e MongoDB são a stack de destino; TypeScript tem preferência. JavaScript é permitido quando trouxer vantagem concreta. Outras tecnologias só entram quando forem realmente necessárias, com justificativa.
@@ -51,7 +53,7 @@ Foram recuperados os dois documentos originais da conversa `6af1e9b3-0b9c-83e8-9
 | Atribuição | Campo opcional `ctwaClid` em Purchase; inspeção de metadados internos do WhatsApp na ponte | schema, `extension/page-bridge.js` |
 | Ausências | Não identificados LP/referral persistido, `_fbp`/`_fbc`, Deal, ERP, fila durável, manifest/service worker de PWA ou WebSocket | arquivos e buscas no código |
 
-O README tem trechos incompatíveis entre si: afirma que atalhos/respostas na extensão ainda não existem e depois descreve sua implementação. `content.js` contém barra, atalhos e ações. O código prevalece para existência; funcionamento real ainda exige homologação. A nomenclatura também mistura Vision CRM, tarot-crm e NexuSync: manter `visionsync` como identificação técnica até decisão de marca.
+O README tem trechos incompatíveis entre si: afirma que atalhos/respostas na extensão ainda não existem e depois descreve sua implementação. `content.js` contém barra, atalhos e ações. O código prevalece para existência; funcionamento real ainda exige homologação. A nomenclatura também mistura VisionSync, tarot-crm e NexuSync: manter `visionsync` como identificação técnica até decisão de marca.
 
 ### 1.2 Lacunas identificadas no protótipo original (histórico)
 

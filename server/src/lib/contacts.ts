@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { avatarUrl } from "@/lib/contact-avatar"
 import type { Prisma } from "@prisma/client"
 export async function listContacts(userId: string, q = "", cursor = "") {
   q = q.trim().slice(0, 100)
@@ -11,7 +12,7 @@ export async function listContacts(userId: string, q = "", cursor = "") {
   const where: Prisma.ContactWhereInput = anchor ? { AND: [search, { OR: [
     { lastActivityAt: { lt: anchor.lastActivityAt } }, { lastActivityAt: anchor.lastActivityAt, id: { lt: anchor.id } },
   ] }] } : search
-  const rows = await prisma.contact.findMany({ where, orderBy: [{ lastActivityAt: "desc" }, { id: "desc" }], take: 21, select: { id: true, name: true, phone: true } })
-  const items = rows.slice(0, 20)
+  const rows = await prisma.contact.findMany({ where, orderBy: [{ lastActivityAt: "desc" }, { id: "desc" }], take: 21, select: { id: true, name: true, phone: true, avatarKey: true, avatarUpdatedAt: true } })
+  const items = rows.slice(0, 20).map(c => ({ id: c.id, name: c.name, phone: c.phone, avatarUrl: avatarUrl(c) }))
   return { items, nextCursor: rows.length > 20 ? items[items.length - 1].id : null }
 }

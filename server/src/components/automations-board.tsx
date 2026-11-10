@@ -6,7 +6,7 @@ import type { QuickReplyView } from "@/lib/quick-replies"
 import { PageHeader } from "@/components/page-header"
 import { btn, btnSm, card, chip, errorText, field, ghost, ghostSm, helper, inner, label } from "@/lib/ui"
 
-type SeqStep = { text: string; delaySec: number }
+type SeqStep = { text: string; delaySec: number; quickReplyId?: string }
 
 function parseSeq(raw: string | null | undefined): SeqStep[] {
   if (!raw) return []
@@ -16,6 +16,7 @@ function parseSeq(raw: string | null | undefined): SeqStep[] {
       return arr.map((s) => ({
         text: String(s?.text ?? ""),
         delaySec: Math.max(0, Math.min(60, Number(s?.delaySec ?? 2) || 0)),
+        quickReplyId: typeof s?.quickReplyId === "string" ? s.quickReplyId : undefined,
       }))
     }
   } catch {}
@@ -76,6 +77,7 @@ async function call(method: string, url: string, body?: unknown) {
 
 export function AutomationsBoard() {
   const [sequences, setSequences] = useState<QuickReplyView[] | null>(null)
+  const [mediaReplies, setMediaReplies] = useState<QuickReplyView[]>([])
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<string | null>(null)
   const [showBuilder, setShowBuilder] = useState(false)
@@ -94,6 +96,7 @@ export function AutomationsBoard() {
     try {
       const all: QuickReplyView[] = await call("GET", "/api/crm/quick-replies")
       setSequences(all.filter((r) => r.type === "SEQUENCE"))
+      setMediaReplies(all.filter(r => ["AUDIO", "IMAGE"].includes(r.type) && !r.viewOnce))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não consegui carregar as sequências.")
@@ -125,7 +128,7 @@ export function AutomationsBoard() {
   }
 
   async function createCustom() {
-    const clean = steps.filter((s) => s.text.trim())
+    const clean = steps.filter((s) => s.text.trim() || s.quickReplyId)
     if (!name.trim() || clean.length === 0) return setError("Informe o nome e pelo menos 1 passo.")
     setSaving(true)
     setError(null)
@@ -176,7 +179,7 @@ export function AutomationsBoard() {
       {showBuilder && (
         <div style={{ ...card, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
           <h3 style={{ margin: 0, fontSize: 16, color: "var(--strong)" }}>Criar Nova Sequência de Mensagens</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 160px", gap: 10 }}>
+          <div className="vs-sequence-fields">
             <div>
               <label style={label}>Nome da Sequência *</label>
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Apresentação Completa" style={field} />
@@ -194,9 +197,9 @@ export function AutomationsBoard() {
           <label style={label}>Passos do Roteiro</label>
           {steps.map((st, idx) => (
             <div key={idx} style={{ ...inner, padding: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <strong style={{ fontSize: 13, color: "var(--accent-text)" }}>Passo {idx + 1}</strong>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 12, color: "var(--muted)" }}>Aguardar antes de enviar (seg):</span>
                   <input
                     type="number"
@@ -217,6 +220,11 @@ export function AutomationsBoard() {
                   )}
                 </div>
               </div>
+              <label style={label}>Mídia opcional da biblioteca
+                <select value={st.quickReplyId || ""} onChange={e => setSteps(steps.map((step, i) => i === idx ? { ...step, quickReplyId: e.target.value || undefined, ...(mediaReplies.find(r => r.id === e.target.value)?.type === "AUDIO" ? { text: "" } : {}) } : step))} style={field}>
+                  <option value="">Somente texto</option>{mediaReplies.map(r => <option key={r.id} value={r.id}>{r.name} ({r.type === "AUDIO" ? "Áudio" : "Imagem"})</option>)}
+                </select>
+              </label>
               <textarea
                 value={st.text}
                 onChange={(e) => {
@@ -230,7 +238,7 @@ export function AutomationsBoard() {
               />
             </div>
           ))}
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
             <button onClick={() => setSteps([...steps, { text: "", delaySec: 2 }])} style={ghost}>
               + Adicionar passo
             </button>
@@ -250,7 +258,7 @@ export function AutomationsBoard() {
         <p style={helper}>
           Instale com 1 clique roteiros validados de vendas. Depois, no WhatsApp Web, basta clicar no chip da sequência na barra inferior ou digitar <code>;atalho</code> para disparar todas as mensagens automaticamente!
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginTop: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 12, marginTop: 12 }}>
           {PLAYBOOKS.map((pb) => {
             const installed = (sequences ?? []).some((s) => s.name === pb.name)
             return (
@@ -262,7 +270,7 @@ export function AutomationsBoard() {
                 <p style={{ fontSize: 12.5, color: "var(--muted)", margin: 0 }}>{pb.description}</p>
                 <div style={{ fontSize: 12, color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
                   {pb.steps.map((s, i) => (
-                    <div key={i} style={{ padding: "4px 8px", borderRadius: 6, background: "rgba(0,0,0,0.2)" }}>
+                    <div key={i} style={{ padding: "4px 8px", borderRadius: 6, background: "var(--subtle-surface)" }}>
                       <b>{i + 1}.</b> ({s.delaySec}s) {s.text}
                     </div>
                   ))}
@@ -307,7 +315,7 @@ export function AutomationsBoard() {
               const st = parseSeq(seq.text)
               return (
                 <div key={seq.id} style={{ ...inner, padding: 14 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 8 }}>
                     <strong style={{ fontSize: 14, color: "var(--strong)", flex: 1 }}>{seq.name}</strong>
                     {seq.shortcut && <span style={chip("vio")}>;{seq.shortcut}</span>}
                     <span style={{ fontSize: 12, color: "var(--muted)" }}>disparada {seq.usageCount}×</span>
@@ -317,11 +325,11 @@ export function AutomationsBoard() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {st.map((step, i) => (
-                      <div key={i} style={{ fontSize: 13, color: "var(--text)", padding: "6px 10px", borderRadius: 8, background: "rgba(0,0,0,0.22)" }}>
+                      <div key={i} style={{ fontSize: 13, color: "var(--text)", padding: "6px 10px", borderRadius: 8, background: "var(--subtle-surface)" }}>
                         <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-text)", marginRight: 8 }}>
                           Passo {i + 1} ({step.delaySec}s)
                         </span>
-                        {step.text}
+                        {step.quickReplyId ? `[${mediaReplies.find(r => r.id === step.quickReplyId)?.name ?? "Mídia indisponível"}] ` : ""}{step.text}
                       </div>
                     ))}
                   </div>

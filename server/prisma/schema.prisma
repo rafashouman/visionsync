@@ -40,6 +40,8 @@ model Contact {
   name      String
   phone     String
   email     String?
+  avatarKey       String?
+  avatarUpdatedAt DateTime?
 
   // Dados do lead
   source    String?   // origem: "anuncio" | "organico" | "indicacao" | "outro"
@@ -164,7 +166,8 @@ model QuickReply {
 /// Tabela separada de propósito: a lista de respostas nunca lê esta tabela.
 model QuickReplyFile {
   quickReplyId String @id @map("_id")
-  data         Bytes
+  data         Bytes?
+  storageKey   String?
 
   quickReply QuickReply @relation(fields: [quickReplyId], references: [id], onDelete: Cascade)
 
@@ -193,6 +196,7 @@ model Reminder {
   contactId   String
   text        String
   scheduledMessage String?   // mensagem pré-pronta para enviar no horário agendado (HotZapp)
+  scheduledReplyId String?   // resposta rápida de áudio/imagem; validada por conta ao criar e ao enviar
   dueAt       DateTime
   doneAt      DateTime?
   snoozeCount Int       @default(0)

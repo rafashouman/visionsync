@@ -457,8 +457,8 @@ function EditorModal({
                 )}
                 {media === "AUDIO" && (
                   <>
-                    <Toggle checked={asVoiceNote} onChange={setAsVoiceNote} label="Enviar como áudio gravado na hora" />
-                    <p style={helper}>Chega como arquivo de áudio, igual a um encaminhado.</p>
+                    <Toggle checked={asVoiceNote} onChange={setAsVoiceNote} label="Enviar como nota de voz" />
+                    <p style={helper}>Nota de voz requer OGG/Opus e conector do servidor conectado. MP3 pode ser enviado como arquivo de áudio. O envio cria uma nova mensagem; não usa encaminhamento.</p>
                   </>
                 )}
               </>

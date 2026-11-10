@@ -7,6 +7,7 @@ import {
   isUniqueViolation, kindField, nameField, shortcutField, textField, toView, unavailableTypeMessage,
 } from "@/lib/quick-replies"
 import { isMediaKind } from "@/lib/quick-reply-types"
+import { validateSequence } from "@/lib/quick-reply-sequence"
 
 // GET /api/crm/quick-replies -> todas as respostas rápidas da conta, na ordem manual.
 export async function GET(req: NextRequest) {
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest) {
     const t = textField.safeParse(d.text)
     if (!t.success) return NextResponse.json({ error: firstIssue(t.error) }, { status: 400 })
     text = t.data
+    if (d.type === "SEQUENCE") { const error = await validateSequence(user.id, text); if (error) return NextResponse.json({ error }, { status: 400 }) }
   } else if (d.type === "CONTACT") {
     const n = contactNameField.safeParse(d.contactName)
     if (!n.success) return NextResponse.json({ error: firstIssue(n.error) }, { status: 400 })

@@ -1,4 +1,5 @@
 "use client"
+import { ContactAvatar } from "./contact-avatar"
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Ellipsis, Flame, HandCoins, MessageSquare, Plus, Search, TrendingUp } from "lucide-react"
@@ -476,10 +477,11 @@ function CardView({
         ...inner,
         padding: "11px 12px",
         cursor: "grab",
-        borderLeft: `4px solid ${idle ? "var(--late)" : "rgba(143, 163, 214, 0.35)"}`,
+        borderLeft: `4px solid ${idle ? "var(--late)" : "var(--neutral-line)"}`,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+        <ContactAvatar name={c.name} src={c.avatarUrl} size={28} />
         <button type="button"
           onClick={onOpen}
           title="Abrir dados, notas e histórico"
@@ -710,6 +712,6 @@ const panel: React.CSSProperties = { ...card, display: "flex", alignItems: "cent
 const form: React.CSSProperties = { display: "flex", flexDirection: "column", gap: 7, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--soft)" }
 const popup: React.CSSProperties = {
   position: "absolute", top: 28, right: 0, zIndex: 10, display: "flex", flexDirection: "column", minWidth: 140,
-  background: "var(--popup)", border: "1px solid var(--line)", borderRadius: 10, boxShadow: "0 10px 28px rgba(0,0,0,0.5)", overflow: "hidden",
+  background: "var(--popup)", border: "1px solid var(--line)", borderRadius: 10, boxShadow: "var(--popup-shadow)", overflow: "hidden",
 }
 const popupItem: React.CSSProperties = { background: "none", border: "none", textAlign: "left", padding: "9px 12px", fontSize: 13, cursor: "pointer", color: "var(--text)" }

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { isMissingFile, limitedFormData, readStoredFile, removeStoredFile, storeFile } from "@/lib/local-storage"
+
+export const runtime = "nodejs"
 import { getAuthUser } from "@/lib/crm-auth"
 import { MAX_FILE_BYTES, isMediaKind } from "@/lib/quick-reply-types"
 import { accountQuotaError, checkUpload } from "@/lib/quick-reply-files"
@@ -24,11 +27,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params
   const row = await prisma.quickReplyFile.findFirst({
     where: { quickReplyId: id, quickReply: { userId: user.id } },
-    select: { data: true, quickReply: { select: { type: true, mediaName: true, mediaMime: true } } },
+    select: { data: true, storageKey: true, quickReply: { select: { type: true, mediaName: true, mediaMime: true } } },
   })
   if (!row) return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 404 })
 
-  const bytes = row.data
+  let bytes: Uint8Array<ArrayBuffer> | null
+  try { bytes = row.storageKey ? await readStoredFile(row.storageKey) : row.data }
+  catch (error) { if (isMissingFile(error)) return new Response(null, { status: 404 }); throw error }
+  if (!bytes) return new Response(null, { status: 404 })
   const total = bytes.length
   const { type, mediaName, mediaMime } = row.quickReply
 
@@ -37,7 +43,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     "Content-Disposition": disposition(type === "DOCUMENT" ? "attachment" : "inline", mediaName ?? "arquivo"),
     "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "sandbox; default-src 'none'",
-    "Cache-Control": "private, max-age=300",
+    "Cache-Control": "private, no-store",
     "Accept-Ranges": "bytes",
   }
 
@@ -72,7 +78,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
 
   const { id } = await ctx.params
-  const current = await prisma.quickReply.findFirst({ where: { id, userId: user.id } })
+  const current = await prisma.quickReply.findFirst({ where: { id, userId: user.id }, include: { file: { select: { storageKey: true } } } })
   if (!current) return NextResponse.json({ error: "Resposta não encontrada" }, { status: 404 })
   if (!isMediaKind(current.type)) {
     return NextResponse.json({ error: "Esta resposta não tem arquivo." }, { status: 400 })
@@ -85,7 +91,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   let form: FormData
   try {
-    form = await req.formData()
+    form = await limitedFormData(req, MAX_FILE_BYTES + 256 * 1024)
   } catch {
     return NextResponse.json({ error: "Envio inválido." }, { status: 400 })
   }
@@ -97,16 +103,19 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   const quota = await accountQuotaError(user.id, checked.file.size, current.id)
   if (quota) return NextResponse.json({ error: quota }, { status: 400 })
 
-  const updated = await prisma.quickReply.update({
+  const storageKey = await storeFile(user.id, "files", checked.file.data)
+  let updated
+  try { updated = await prisma.quickReply.update({
     where: { id },
     data: {
       mediaName: checked.file.name,
       mediaMime: checked.file.mime,
       mediaSize: checked.file.size,
       file: {
-        upsert: { create: { data: checked.file.data }, update: { data: checked.file.data } },
+        upsert: { create: { storageKey }, update: { storageKey, data: null } },
       },
     },
-  })
+  }) } catch (error) { await removeStoredFile(storageKey); throw error }
+  await removeStoredFile(current.file?.storageKey).catch(() => console.error("Could not remove replaced upload"))
   return NextResponse.json(toView(updated))
 }

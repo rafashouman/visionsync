@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 220 }}>
+      <div style={{ flex: 1, minWidth: "min(220px, 100%)", overflowWrap: "anywhere" }}>
         <h1 className="v-title">{title}</h1>
         {subtitle && <p className="v-sub">{subtitle}</p>}
       </div>

@@ -2,6 +2,19 @@
 
 Frontend Next.js/TypeScript e plugin Chrome MV3 para operar o CRM no WhatsApp Web. Persistência MongoDB. O protótipo original está preservado no histórico Git; esta é a primeira entrega de evolução, não o MVP completo descrito no roadmap.
 
+
+## Documentação da primeira etapa
+
+- [Documento de desenvolvimento](docs/04-documento-de-desenvolvimento.md): stack atual, módulos, regras, ambiente local e sistema de temas.
+- [Roadmap consolidado](docs/05-roadmap.md): primeira etapa, próximos blocos, prioridades e critérios de liberação.
+- [Estado da implementação](docs/03-estado-da-implementacao.md): verificações executadas e limitações.
+
+### Aparência
+
+Em **Configurações → Aparência**, escolha Escuro original (padrão), Escuro minimalista, Claro ou Claro minimalista. A mudança é imediata e fica salva neste navegador por um ano. O seletor também está disponível nas telas de login/cadastro. Preferência ausente/inválida mantém o original; os temas não mudam dados ou permissões. Painel e autenticação usam os mesmos tokens; a extensão no WhatsApp continua com seu visual independente.
+
+O HTML já recebe o tema escolhido pelo servidor, sem depender de um script que recolora a tela após abrir. Para isso, o layout lê um cookie de preferência e as páginas web são renderizadas por requisição. Não foram adicionadas bibliotecas de tema nem Tailwind.
+
 ## Componentes
 
 - `server/`: aplicação Next.js, login, painel do dia, contatos, etiquetas/kanban, cobranças, notas, lembretes, respostas rápidas e configuração de integrações.
@@ -147,3 +160,7 @@ Veja [estado da implementação](docs/03-estado-da-implementacao.md), [arquitetu
 ### Compatibilidade financeira da revisão 1.3
 
 Novas cobranças passam a gravar `amountMinor` (centavos inteiros) e `currency=BRL`. Na baixa, a compra usa esses mesmos centavos/moeda. A leitura e os resumos preferem centavos; registros legados sem esse campo continuam lidos por `amount`, preservado para compatibilidade. Nenhum histórico foi reescrito. Campos novos são aditivos; gerar o cliente faz parte do build. Backfill com reconciliação do legado e remoção futura de Float permanecem separados desta entrega, assim como estornos e demais estados financeiros do roadmap.
+
+## Piloto de WhatsApp no servidor
+
+Abra **Mensagens → Envios no servidor** para configurar até dois destinatários autorizados e vincular o WhatsApp por QR. Inicie o processo persistente com `npm run whatsapp:worker`, além do CRM. Regras de aniversário, retorno de orçamento e pós-venda começam desligadas, com fila pausada e revisão individual. Consulte o [guia do piloto](docs/06-piloto-whatsapp-servidor.md) antes do primeiro teste. Esta implementação não equivale a uma conta já vinculada ou a um deploy na VPS.

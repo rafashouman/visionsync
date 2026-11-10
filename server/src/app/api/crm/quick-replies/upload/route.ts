@@ -8,6 +8,9 @@ import {
 } from "@/lib/quick-replies"
 import { MAX_FILE_BYTES, MEDIA_RULES, isMediaKind } from "@/lib/quick-reply-types"
 import { accountQuotaError, checkUpload } from "@/lib/quick-reply-files"
+import { limitedFormData, storeFile, removeStoredFile } from "@/lib/local-storage"
+
+export const runtime = "nodejs"
 
 const flag = (v: FormDataEntryValue | null) => v === "true" || v === "on" || v === "1"
 const str = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : undefined)
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   let form: FormData
   try {
-    form = await req.formData()
+    form = await limitedFormData(req, MAX_FILE_BYTES + 256 * 1024)
   } catch {
     return NextResponse.json({ error: "Envio inválido." }, { status: 400 })
   }
@@ -76,6 +79,7 @@ export async function POST(req: NextRequest) {
 
   const last = await prisma.quickReply.aggregate({ where: { userId: user.id }, _max: { position: true } })
 
+  const storageKey = await storeFile(user.id, "files", checked.file.data)
   try {
     const created = await prisma.quickReply.create({
       data: {
@@ -90,12 +94,14 @@ export async function POST(req: NextRequest) {
         mediaSize: checked.file.size,
         viewOnce,
         asVoiceNote,
+        favorite: flag(form.get("favorite")),
         position: (last._max.position ?? -1) + 1,
-        file: { create: { data: checked.file.data } },
+        file: { create: { storageKey } },
       },
     })
     return NextResponse.json(toView(created), { status: 201 })
   } catch (e) {
+    await removeStoredFile(storageKey)
     if (isUniqueViolation(e)) return NextResponse.json({ error: SHORTCUT_TAKEN }, { status: 409 })
     throw e
   }

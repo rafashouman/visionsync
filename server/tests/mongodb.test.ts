@@ -217,5 +217,98 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       assert.equal(validAmount(0.001), false); assert.equal(validAmount(Infinity), false)
       assert.equal(validAmount(19.9), true); assert.equal(sumMoney([0.1, 0.2]), 0.3)
     })
+    await t.test("private avatars and disk uploads: ownership, legacy read, replacement, duplication and deletion", async () => {
+      const { mkdtemp, rm } = await import("node:fs/promises")
+      const os = await import("node:os")
+      const sharp = (await import("sharp")).default
+      const root = await mkdtemp(path.join(os.tmpdir(), "visionsync-media-"))
+      const previous = process.env.UPLOADS_DIR
+      process.env.UPLOADS_DIR = root
+      try {
+        const { NextRequest } = await import("next/server")
+        const { generateApiToken, hashApiToken } = await import("../src/lib/crm-auth")
+        const token = generateApiToken()
+        await prisma.user.update({ where: { id: user.id }, data: { apiTokenHash: hashApiToken(token), apiTokenExpiresAt: new Date(Date.now() + 60000) } })
+        const headers = { Authorization: `Bearer ${token}` }
+        const avatar = await import("../src/app/api/crm/contacts/[id]/avatar/route")
+        const image = await sharp({ create: { width: 20, height: 20, channels: 3, background: "red" } }).png().toBuffer()
+        const put = (id: string, base64: string) => avatar.PUT(new NextRequest(`http://localhost/api/crm/contacts/${id}/avatar`, { method: "PUT", headers: { ...headers, "Content-Type": "application/json" }, body: JSON.stringify({ base64 }) }), { params: Promise.resolve({ id }) })
+        const foreign = await prisma.contact.findFirstOrThrow({ where: { userId: other.id } })
+        assert.equal((await put(foreign.id, image.toString("base64"))).status, 404)
+        assert.equal((await put(contact.id, Buffer.from("invalid").toString("base64"))).status, 400)
+        assert.equal((await put(contact.id, image.toString("base64"))).status, 200)
+        const stored = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })
+        const { readStoredFile } = await import("../src/lib/local-storage")
+        assert.equal((await sharp(await readStoredFile(stored.avatarKey!)).metadata()).format, "webp")
+        assert.equal((await put(contact.id, image.toString("base64"))).status, 200)
+        await assert.rejects(readStoredFile(stored.avatarKey!))
+        assert.equal((await avatar.DELETE(new NextRequest("http://localhost", { method: "DELETE", headers }), { params: Promise.resolve({ id: contact.id }) })).status, 200)
+
+        const upload = await import("../src/app/api/crm/quick-replies/upload/route")
+        const form = new FormData(); form.set("type", "IMAGE"); form.set("name", "Foto teste"); form.set("file", new File([image], "photo.png"))
+        const created = await upload.POST(new NextRequest("http://localhost/api/crm/quick-replies/upload", { method: "POST", headers, body: form }))
+        assert.equal(created.status, 201)
+        const reply = await created.json()
+        const file = await prisma.quickReplyFile.findUniqueOrThrow({ where: { quickReplyId: reply.id } })
+        assert.ok(file.storageKey); assert.equal(file.data, null)
+        const routes = await import("../src/app/api/crm/quick-replies/[id]/file/route")
+        const request = new NextRequest("http://localhost", { headers })
+        const ctx = { params: Promise.resolve({ id: reply.id }) }
+        const fetched = await routes.GET(request, ctx)
+        assert.equal(fetched.status, 200); assert.deepEqual(Buffer.from(await fetched.arrayBuffer()), image)
+        const replacement = new FormData(); replacement.set("file", new File([image], "replacement.png"))
+        assert.equal((await routes.PUT(new NextRequest("http://localhost", { method: "PUT", headers, body: replacement }), ctx)).status, 200)
+        await assert.rejects(readStoredFile(file.storageKey!))
+        const legacy = await prisma.quickReply.create({ data: { userId: user.id, name: "Legado", type: "IMAGE", mediaName: "old.png", mediaMime: "image/png", mediaSize: image.length, file: { create: { data: image } } } })
+        const legacyCtx = { params: Promise.resolve({ id: legacy.id }) }
+        assert.equal((await routes.GET(request, legacyCtx)).status, 200)
+        const duplicate = await import("../src/app/api/crm/quick-replies/[id]/duplicate/route")
+        const copy = await duplicate.POST(new NextRequest("http://localhost", { method: "POST", headers }), legacyCtx)
+        assert.equal(copy.status, 201)
+        const copyId = (await copy.json()).id
+        const copiedFile = await prisma.quickReplyFile.findUniqueOrThrow({ where: { quickReplyId: copyId } })
+        assert.ok(copiedFile.storageKey); assert.equal(copiedFile.data, null)
+        const remove = await import("../src/app/api/crm/quick-replies/[id]/route")
+        assert.equal((await remove.DELETE(new NextRequest("http://localhost", { method: "DELETE", headers }), { params: Promise.resolve({ id: copyId }) })).status, 200)
+        await assert.rejects(readStoredFile(copiedFile.storageKey!))
+      } finally {
+        if (previous === undefined) delete process.env.UPLOADS_DIR; else process.env.UPLOADS_DIR = previous
+        await rm(root, { recursive: true, force: true })
+      }
+    })
+    await t.test("media sequences and scheduled attachments are owned, persisted and validated", async () => {
+      const { validateSequence } = await import("../src/lib/quick-reply-sequence")
+      const image = await prisma.quickReply.create({ data: { userId: user.id, name: "Imagem agendada", type: "IMAGE", mediaMime: "image/png", file: { create: { data: Buffer.from("test-media-payload") } } } })
+      const audio = await prisma.quickReply.create({ data: { userId: user.id, name: "Áudio roteiro", type: "AUDIO", mediaMime: "audio/mpeg", asVoiceNote: false } })
+      const foreign = await prisma.quickReply.create({ data: { userId: other.id, name: "Privado", type: "IMAGE" } })
+      assert.equal(await validateSequence(user.id, JSON.stringify([{ text: "Legenda", delaySec: 0, quickReplyId: image.id }])), null)
+      assert.equal(await validateSequence(user.id, JSON.stringify([{ text: "", delaySec: 0, quickReplyId: audio.id }])), null)
+      assert.ok(await validateSequence(user.id, JSON.stringify([{ text: "", delaySec: 0, quickReplyId: foreign.id }])))
+      assert.ok(await validateSequence(user.id, JSON.stringify([{ text: "Texto não é legenda de áudio", delaySec: 0, quickReplyId: audio.id }])))
+      const { NextRequest } = await import("next/server")
+      const { generateApiToken, hashApiToken } = await import("../src/lib/crm-auth")
+      const token = generateApiToken()
+      await prisma.user.update({ where: { id: user.id }, data: { apiTokenHash: hashApiToken(token), apiTokenExpiresAt: new Date(Date.now() + 60000) } })
+      const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+      const route = await import("../src/app/api/crm/reminders/route")
+      const input = { contactId: contact.id, text: "Imagem agendada", scheduledMessage: "Legenda", scheduledReplyId: image.id, dueAt: new Date(Date.now() + 3600000).toISOString() }
+      try {
+        const response = await route.POST(new NextRequest("http://localhost/api/crm/reminders", { method: "POST", headers, body: JSON.stringify(input) }))
+        assert.equal(response.status, 201)
+        const { id } = await response.json()
+        assert.equal((await prisma.reminder.findUniqueOrThrow({ where: { id } })).scheduledReplyId, image.id)
+        const legacy = await prisma.reminder.create({ data: { userId: user.id, contactId: contact.id, text: "Legado sem doneAt", dueAt: new Date(input.dueAt) } })
+        const listed = await route.GET(new NextRequest(`http://localhost/api/crm/reminders?contactId=${contact.id}`, { headers }))
+        const rows = (await listed.json()).reminders
+        assert.equal(rows.find((r: { id: string }) => r.id === id).scheduledReplyId, image.id)
+        assert.ok(rows.some((r: { id: string }) => r.id === legacy.id))
+        const denied = await route.POST(new NextRequest("http://localhost/api/crm/reminders", { method: "POST", headers, body: JSON.stringify({ ...input, scheduledReplyId: foreign.id }) }))
+        assert.equal(denied.status, 400)
+      } finally {
+        const cache = globalThis as unknown as { waMongo?: Promise<{ close(): Promise<void> }> }
+        if (cache.waMongo) await (await cache.waMongo).close()
+        delete cache.waMongo
+      }
+    })
   } finally { await prisma.$disconnect(); await mongo.stop() }
 })

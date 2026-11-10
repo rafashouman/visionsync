@@ -7,7 +7,7 @@ import type { CSSProperties } from "react"
  */
 
 export const card: CSSProperties = {
-  background: "linear-gradient(180deg, var(--card-top), var(--card-bottom))",
+  background: "var(--card-surface)",
   border: "1px solid var(--line)",
   borderRadius: 18,
   boxShadow: "var(--card-shadow)",
@@ -95,7 +95,7 @@ export const modal: CSSProperties = {
   maxWidth: "100%",
   maxHeight: "92vh",
   overflowY: "auto",
-  background: "linear-gradient(180deg, var(--panel-1), var(--panel-2))",
+  background: "var(--panel-surface)",
 }
 export const modalTitle: CSSProperties = { margin: "0 0 14px", textAlign: "center", fontSize: 18, color: "var(--strong)" }
 

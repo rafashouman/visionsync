@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { avatarUrl } from "@/lib/contact-avatar"
 import { buildContact } from "@/lib/crm"
 import { dayKey } from "@/lib/dates"
 
@@ -34,6 +35,7 @@ export async function getContactDetail(userId: string, contactId: string, purcha
   return {
     contact: {
       id: contact.id,
+      avatarUrl: avatarUrl(contact),
       name: contact.name,
       phone: contact.phone,
       email: contact.email,
