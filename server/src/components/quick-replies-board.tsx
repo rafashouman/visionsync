@@ -1,20 +1,26 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { ChevronDown, ChevronRight, Copy, Paperclip, Pencil, Plus, Search, Star, Trash2 } from "lucide-react"
+import { ArrowUp, ArrowDown, Eye, GripVertical, ChevronDown, ChevronRight, Copy, Paperclip, Pencil, Plus, Search, Star, Trash2 } from "lucide-react"
 import type { QuickReplyView } from "@/lib/quick-replies"
 import {
   MAX_ACCOUNT_BYTES, MAX_CAPTION, MEDIA_RULES, QUICK_REPLY_TYPES, TYPE_INFO, formatBytes, isMediaKind,
   type QuickReplyKind,
 } from "@/lib/quick-reply-types"
-import { VARIABLES, renderVariables } from "@/lib/quick-reply-vars"
+import { VARIABLES } from "@/lib/quick-reply-vars"
 import { FileDrop, MediaLine, SavedPreview, Toggle } from "@/components/quick-reply-media"
 import { PageHeader } from "@/components/page-header"
 import { TypeIcon } from "@/components/type-icon"
 import { btn, card, empty, errorText, field, ghost, helper, iconBtn, inner, label, modal, modalTitle, opt, overlay, req } from "@/lib/ui"
 
+import { QuickReplyPreview, ReplyPreviewDialog } from "@/components/quick-reply-preview"
+import { QuickReplyCategoryEditor } from "@/components/quick-reply-category-editor"
+import { moveBefore, type LibraryCategory } from "@/lib/quick-reply-library"
+import { previewSteps, type ReplyStep } from "@/lib/quick-reply-preview"
+import { useDialog } from "@/components/use-dialog"
+
 const NO_CATEGORY = "SEM CATEGORIA"
-const SAMPLE = { contactName: "Maria da Silva", contactPhone: "5511999998888", myName: "Seu nome" }
+
 
 type Filter = "todas" | "favoritas" | QuickReplyKind
 type Editor = { mode: "new"; kind: QuickReplyKind | null } | { mode: "edit"; item: QuickReplyView } | null
@@ -51,18 +57,25 @@ function titleFor(kind: QuickReplyKind, editing: boolean) {
   return names[kind][editing ? 1 : 0]
 }
 
-export function QuickRepliesBoard() {
+export function QuickRepliesBoard({ openNew = false }: { openNew?: boolean }) {
   const [items, setItems] = useState<QuickReplyView[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [filter, setFilter] = useState<Filter>("todas")
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [editor, setEditor] = useState<Editor>(null)
-  const [hover, setHover] = useState<string | null>(null)
+  const [editor, setEditor] = useState<Editor>(openNew ? { mode: "new", kind: null } : null)
+  const [categoryMeta, setCategoryMeta] = useState<LibraryCategory[]>([])
+  const [categoryEditor, setCategoryEditor] = useState<LibraryCategory | null>(null)
+  const [previewItem, setPreviewItem] = useState<QuickReplyView | null>(null)
+  const [organizing, setOrganizing] = useState(false)
+  const [sort, setSort] = useState("manual")
+  const dragged = useRef<{ type: "reply" | "category"; key: string } | null>(null)
+  const canOrganize = !search.trim() && filter === "todas" && sort === "manual" && !organizing
 
   const load = useCallback(async () => {
     try {
-      setItems(await call("GET", "/api/crm/quick-replies"))
+      const [rows, categories] = await Promise.all([call("GET", "/api/crm/quick-replies"), call("GET", "/api/crm/quick-replies/library")])
+      setItems(rows); setCategoryMeta(categories)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Não consegui carregar as respostas.")
@@ -81,13 +94,14 @@ export function QuickRepliesBoard() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return (items ?? []).filter((i) => {
+    const result = (items ?? []).filter((i) => {
       if (filter === "favoritas" && !i.favorite) return false
       if (filter !== "todas" && filter !== "favoritas" && i.type !== filter) return false
       if (!q) return true
       return [i.name, i.text, i.shortcut, i.category, i.contactName, i.mediaName].some((v) => v?.toLowerCase().includes(q))
     })
-  }, [items, search, filter])
+    return sort === "name" ? result.sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) : sort === "usage" ? result.sort((a, b) => b.usageCount - a.usageCount) : result
+  }, [items, search, filter, sort])
 
   // Espaço usado pelos arquivos (o limite é por conta)
   const usedBytes = useMemo(() => (items ?? []).reduce((sum, i) => sum + (i.mediaSize ?? 0), 0), [items])
@@ -99,8 +113,8 @@ export function QuickRepliesBoard() {
       const key = i.category ?? NO_CATEGORY
       map.set(key, [...(map.get(key) ?? []), i])
     }
-    return [...map.entries()].sort(([a], [b]) => (a === NO_CATEGORY ? 1 : b === NO_CATEGORY ? -1 : 0))
-  }, [visible])
+    return [...map.entries()].sort(([a], [b]) => (a === NO_CATEGORY ? 1 : b === NO_CATEGORY ? -1 : (categoryMeta.find(c => c.name === a)?.position ?? 9999) - (categoryMeta.find(c => c.name === b)?.position ?? 9999)))
+  }, [visible, categoryMeta])
 
   async function toggleFavorite(i: QuickReplyView) {
     setItems((prev) => prev?.map((x) => (x.id === i.id ? { ...x, favorite: !x.favorite } : x)) ?? prev)
@@ -131,6 +145,23 @@ export function QuickRepliesBoard() {
     }
   }
 
+  async function organize(body: unknown) {
+    setOrganizing(true); setError(null)
+    try { await call("PATCH", "/api/crm/quick-replies/library", body); await load() }
+    catch (error) { setError(error instanceof Error ? error.message : "Não foi possível organizar.") }
+    finally { setOrganizing(false) }
+  }
+  function moveReply(id: string, target: string) {
+    if (!canOrganize || !items || id === target) return
+    const a = items.findIndex(item => item.id === id), b = items.findIndex(item => item.id === target)
+    if (items[a]?.category !== items[b]?.category) return
+    void organize({ action: "reorder", ids: moveBefore(items, a, b).map(item => item.id) })
+  }
+  function moveCategory(name: string, target: string) {
+    if (!canOrganize || name === target) return
+    void organize({ action: "categories", names: moveBefore(categoryMeta, categoryMeta.findIndex(item => item.name === name), categoryMeta.findIndex(item => item.name === target)).map(item => item.name) })
+  }
+
   const toggleGroup = (key: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev)
@@ -145,7 +176,7 @@ export function QuickRepliesBoard() {
         title="Respostas rápidas"
         subtitle={
           <>
-            Mensagens prontas. Usar dentro da conversa (digitando <code>;</code> + atalho) vem com a extensão, em breve.
+            Grave, organize e confira suas respostas. No WhatsApp, use <code>;</code> + atalho ou a barra do plugin.
             {usedBytes > 0 && (
               <span style={{ marginLeft: 8, color: usedBytes > MAX_ACCOUNT_BYTES * 0.8 ? "var(--wait)" : "var(--faint)" }}>
                 Arquivos: {formatBytes(usedBytes)} de {formatBytes(MAX_ACCOUNT_BYTES)}
@@ -165,7 +196,7 @@ export function QuickRepliesBoard() {
           <Search size={16} style={{ color: "var(--muted)", flex: "none" }} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar mensagem" style={bare} />
         </div>
-        <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} style={{ ...field, width: "auto" }}>
+        <select aria-label="Filtrar por tipo" value={filter} onChange={(e) => setFilter(e.target.value as Filter)} style={{ ...field, width: "auto" }}>
           <option value="todas">Todas</option>
           <option value="favoritas">Favoritas</option>
           {QUICK_REPLY_TYPES.filter((t) => TYPE_INFO[t].available).map((t) => (
@@ -174,6 +205,10 @@ export function QuickRepliesBoard() {
         </select>
       </div>
 
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12, color: "var(--muted)" }}>Ordenar <select value={sort} onChange={event => setSort(event.target.value)} style={{ ...field, width: "auto" }}><option value="manual">Minha organização</option><option value="name">Nome</option><option value="usage">Mais usadas</option></select></label>
+        <span role="status" style={helper}>{organizing ? "Salvando organização…" : canOrganize ? "Arraste respostas dentro da categoria ou use as setas. Arraste os títulos para ordenar categorias." : "Para reorganizar, limpe os filtros e selecione Minha organização."}</span>
+      </div>
       {error && <p style={{ ...errorText, margin: 0 }}>{error}</p>}
 
       {items === null ? (
@@ -186,9 +221,15 @@ export function QuickRepliesBoard() {
         groups.map(([key, list]) => {
           const closed = collapsed.has(key)
           return (
-            <div key={key}>
-              <button onClick={() => toggleGroup(key)} style={groupHeader}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: key === NO_CATEGORY ? "var(--faint)" : "var(--accent)", boxShadow: key === NO_CATEGORY ? "none" : "0 0 8px var(--glow)" }} />
+            <div key={key} draggable={canOrganize && key !== NO_CATEGORY} onDragStart={event => { if (!canOrganize || key === NO_CATEGORY) return; dragged.current = { type: "category", key }; event.dataTransfer.setData("text/plain", key) }} onDragEnd={() => { dragged.current = null }} onDragOver={event => { if (canOrganize && dragged.current?.type === "category" && key !== NO_CATEGORY) event.preventDefault() }} onDrop={event => { if (dragged.current?.type !== "category") return; event.preventDefault(); event.stopPropagation(); if (key !== NO_CATEGORY) moveCategory(dragged.current.key, key); dragged.current = null }}>
+              {key !== NO_CATEGORY && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }} draggable={canOrganize} onDragStart={event => { dragged.current = { type: "category", key }; event.dataTransfer.setData("text/plain", key) }} onDragEnd={() => { dragged.current = null }}>
+                <GripVertical size={14} aria-hidden="true" style={{ color: "var(--muted)" }} />
+                <button aria-label={`Mover categoria ${key} para cima`} disabled={!canOrganize || categoryMeta[0]?.name === key} style={iconBtn} onClick={() => moveCategory(key, categoryMeta[categoryMeta.findIndex(c => c.name === key) - 1]?.name || key)}><ArrowUp size={14} /></button>
+                <button aria-label={`Mover categoria ${key} para baixo`} disabled={!canOrganize || categoryMeta.at(-1)?.name === key} style={iconBtn} onClick={() => moveCategory(key, categoryMeta[categoryMeta.findIndex(c => c.name === key) + 1]?.name || key)}><ArrowDown size={14} /></button>
+                <button style={{ ...ghost, padding: "4px 9px", fontSize: 11 }} disabled={organizing} onClick={() => setCategoryEditor(categoryMeta.find(c => c.name === key) || null)}>Nome e cor da categoria</button>
+              </div>}
+              <button aria-expanded={!closed} onClick={() => toggleGroup(key)} style={groupHeader}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: key === NO_CATEGORY ? "var(--faint)" : (categoryMeta.find(c => c.name === key)?.color || "var(--accent)"), boxShadow: key === NO_CATEGORY ? "none" : "0 0 8px var(--glow)" }} />
                 <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: 1, color: "var(--vred)" }}>{key}</span>
                 <span style={{ fontSize: 12, color: "var(--faint)" }}>({list.length})</span>
                 <span style={{ marginLeft: "auto", color: "var(--faint)", display: "grid" }}>
@@ -197,13 +238,16 @@ export function QuickRepliesBoard() {
               </button>
               {!closed && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 9, marginTop: 8 }}>
-                  {list.map((i) => (
-                    <div key={i.id} onMouseEnter={() => setHover(i.id)} onMouseLeave={() => setHover(null)} style={{ ...card, padding: "12px 14px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {list.map((i, index) => (
+                    <div key={i.id} draggable={canOrganize} onDragStart={event => { event.stopPropagation(); dragged.current = { type: "reply", key: i.id }; event.dataTransfer.setData("text/plain", i.id) }} onDragEnd={() => { dragged.current = null }} onDragOver={event => { if (canOrganize && dragged.current?.type === "reply") event.preventDefault() }} onDrop={event => { if (dragged.current?.type !== "reply") return; event.preventDefault(); event.stopPropagation(); moveReply(dragged.current.key, i.id); dragged.current = null }} style={{ ...card, padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
                         <span title={TYPE_INFO[i.type].label} style={typeIcon}><TypeIcon kind={i.type} size={16} /></span>
-                        <strong style={{ flex: 1, fontSize: 14, color: "var(--strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</strong>
-                        {hover === i.id && (
+                        <strong style={{ flex: 1, minWidth: 120, fontSize: 14, color: "var(--strong)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</strong>
+                        {(
                           <span style={{ display: "flex", gap: 2 }}>
+                            <button title="Ver prévia" aria-label={`Ver prévia de ${i.name}`} onClick={() => setPreviewItem(i)} style={iconBtn}><Eye size={16} /></button>
+                            <button title="Mover para cima" aria-label={`Mover ${i.name} para cima`} disabled={!canOrganize || index === 0} onClick={() => moveReply(i.id, list[index - 1].id)} style={iconBtn}><ArrowUp size={15} /></button>
+                            <button title="Mover para baixo" aria-label={`Mover ${i.name} para baixo`} disabled={!canOrganize || index === list.length - 1} onClick={() => moveReply(i.id, list[index + 1].id)} style={iconBtn}><ArrowDown size={15} /></button>
                             <button title="Duplicar" aria-label="Duplicar" onClick={() => duplicate(i)} style={iconBtn}><Copy size={16} /></button>
                             <button title="Editar" aria-label="Editar" onClick={() => setEditor({ mode: "edit", item: i })} style={iconBtn}><Pencil size={16} /></button>
                             <button title="Excluir" aria-label="Excluir" onClick={() => remove(i)} style={{ ...iconBtn, color: "var(--danger)" }}><Trash2 size={16} /></button>
@@ -243,10 +287,13 @@ export function QuickRepliesBoard() {
         })
       )}
 
+      {previewItem && <ReplyPreviewDialog item={previewItem} library={items || []} onClose={() => setPreviewItem(null)} />}
+      {categoryEditor && <QuickReplyCategoryEditor category={categoryEditor} onClose={() => setCategoryEditor(null)} onSave={async (name, color) => { await call("PATCH", "/api/crm/quick-replies/library", { action: "category", previous: categoryEditor.name, name, color }); await load() }} />}
       {editor && (
         <EditorModal
           editor={editor}
           categories={categories}
+          library={items || []}
           onClose={() => setEditor(null)}
           onSaved={async () => {
             setEditor(null)
@@ -260,31 +307,15 @@ export function QuickRepliesBoard() {
 
 /* ───────────── Janela de criar / editar ───────────── */
 
-type SeqStep = { text: string; delaySec: number }
-
-function parseSeq(raw: string | null | undefined): SeqStep[] {
-  if (!raw) return [{ text: "", delaySec: 2 }, { text: "", delaySec: 3 }]
-  const t = raw.trim()
-  if (t.startsWith("[")) {
-    try {
-      const arr = JSON.parse(t)
-      if (Array.isArray(arr) && arr.length) {
-        return arr.map((s) => ({
-          text: String(s?.text ?? ""),
-          delaySec: Math.max(0, Math.min(60, Number(s?.delaySec ?? 2) || 0)),
-        }))
-      }
-    } catch {}
-  }
-  const parts = t.split(/\n---\n/).map((p) => p.trim()).filter(Boolean)
-  return parts.length ? parts.map((p) => ({ text: p, delaySec: 2 })) : [{ text: t, delaySec: 2 }]
-}
+type SeqStep = ReplyStep
+const parseSeq = previewSteps
 
 function EditorModal({
-  editor, categories, onClose, onSaved,
+  editor, categories, library, onClose, onSaved,
 }: {
   editor: NonNullable<Editor>
   categories: string[]
+  library: QuickReplyView[]
   onClose: () => void
   onSaved: () => Promise<void>
 }) {
@@ -303,13 +334,14 @@ function EditorModal({
   const [asVoiceNote, setAsVoiceNote] = useState(editing?.asVoiceNote ?? false)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [recordingBusy, setRecordingBusy] = useState(false)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  const dirty = !!file || name !== (editing?.name || "") || category !== (editing?.category || "") || shortcut !== (editing?.shortcut || "") || text !== (editing?.text || "") || contactName !== (editing?.contactName || "") || contactPhone !== (editing?.contactPhone || "") || viewOnce !== (editing?.viewOnce || false) || asVoiceNote !== (editing?.asVoiceNote || false) || JSON.stringify(seqSteps) !== JSON.stringify(parseSeq(editing?.type === "SEQUENCE" ? editing.text : null))
+  const close = () => { if (busy) return; if ((recordingBusy || dirty) && !confirm("Descartar as alterações e a gravação deste editor?")) return; onClose() }
+  const dialog = useDialog(close)
+  const normalizedShortcut = shortcut.trim().replace(/^;+/, "").trim().toLowerCase()
+  const shortcutTaken = !!normalizedShortcut && library.some(item => item.id !== editing?.id && item.shortcut === normalizedShortcut)
 
   const media = kind !== null && isMediaKind(kind) ? kind : null // tipo com arquivo, ou null
   const hasCaption = media !== null && MEDIA_RULES[media].hasCaption
@@ -318,7 +350,7 @@ function EditorModal({
   const missing =
     (name.trim() ? 0 : 1) +
     (kind === "TEXT" ? (text.trim() ? 0 : 1) : 0) +
-    (kind === "SEQUENCE" ? (seqSteps.some((s) => s.text.trim()) ? 0 : 1) : 0) +
+    (kind === "SEQUENCE" ? (seqSteps.some((s) => s.text.trim() || s.quickReplyId) ? 0 : 1) : 0) +
     (media && !editing && !file ? 1 : 0) + // ao criar, o arquivo é obrigatório
     (kind === "CONTACT" ? (contactName.trim() ? 0 : 1) + (contactPhone.trim() ? 0 : 1) : 0)
 
@@ -344,7 +376,7 @@ function EditorModal({
   }
 
   async function save() {
-    if (!kind || missing > 0) return
+    if (!kind || missing > 0 || recordingBusy || shortcutTaken) return
     setBusy(true)
     setErr(null)
     try {
@@ -382,7 +414,7 @@ function EditorModal({
           kind === "TEXT"
             ? { text }
             : kind === "SEQUENCE"
-              ? { text: JSON.stringify(seqSteps.filter((s) => s.text.trim())) }
+              ? { text: JSON.stringify(seqSteps.filter((s) => s.text.trim() || s.quickReplyId)) }
               : { contactName, contactPhone }
         if (editing) {
           await call("PATCH", `/api/crm/quick-replies/${editing.id}`, { ...common, ...typeFields })
@@ -399,11 +431,11 @@ function EditorModal({
   }
 
   return (
-    <div style={overlay} onClick={onClose}>
-      <div style={modal} onClick={(e) => e.stopPropagation()}>
+    <div style={overlay} onClick={close}>
+      <section ref={dialog} role="dialog" aria-modal="true" aria-labelledby="reply-editor-title" tabIndex={-1} style={{ ...modal, width: 620 }} onClick={(e) => e.stopPropagation()}>
         {!kind ? (
           <>
-            <h2 style={modalTitle}>Nova resposta rápida</h2>
+            <h2 id="reply-editor-title" style={modalTitle}>Nova resposta rápida</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               {QUICK_REPLY_TYPES.filter((t) => t !== "SEQUENCE").map((t) => {
                 const info = TYPE_INFO[t]
@@ -424,12 +456,12 @@ function EditorModal({
               </span>
             </button>
             <div style={{ textAlign: "center", marginTop: 16 }}>
-              <button onClick={onClose} style={ghost}>Cancelar</button>
+              <button onClick={close} style={ghost}>Cancelar</button>
             </div>
           </>
         ) : (
           <>
-            <h2 style={modalTitle}>{titleFor(kind, Boolean(editing))}</h2>
+            <h2 id="reply-editor-title" style={modalTitle}>{titleFor(kind, Boolean(editing))}</h2>
 
             <label style={label}>Nome <span style={req}>*</span></label>
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="Como você vai achar essa mensagem depois" style={field} />
@@ -451,7 +483,7 @@ function EditorModal({
                     {media !== "DOCUMENT" && <SavedPreview id={editing.id} kind={media} name={editing.mediaName} />}
                   </div>
                 )}
-                <FileDrop kind={media} file={file} onFile={setFile} optional={Boolean(editing)} />
+                <FileDrop kind={media} file={file} onFile={selected => { setFile(selected); if (media === "AUDIO" && selected && !selected.name.toLowerCase().endsWith(".ogg")) setAsVoiceNote(false) }} optional={Boolean(editing)} onRecorded={recorded => { setFile(recorded); setAsVoiceNote(true) }} onRecordingBusy={setRecordingBusy} />
                 {(media === "IMAGE" || media === "VIDEO") && (
                   <Toggle checked={viewOnce} onChange={setViewOnce} label="Visualização única" />
                 )}
@@ -476,12 +508,7 @@ function EditorModal({
                   ))}
                 </div>
                 <p style={helper}>Clique pra inserir. O cliente recebe tudo preenchido.</p>
-                {text.trim() && (
-                  <div style={previewBox}>
-                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 2 }}>Como a cliente recebe (exemplo com Maria da Silva):</div>
-                    <div style={{ whiteSpace: "pre-wrap", fontSize: 13, color: "var(--text)" }}>{renderVariables(text, SAMPLE)}</div>
-                  </div>
-                )}
+
               </>
             )}
 
@@ -518,7 +545,13 @@ function EditorModal({
                         </button>
                       )}
                     </div>
+                    <label style={label}>Mídia deste passo (opcional)
+                      <select value={st.quickReplyId || ""} onChange={event => { const media = library.find(item => item.id === event.target.value); setSeqSteps(seqSteps.map((step, i) => i === idx ? { ...step, quickReplyId: event.target.value || undefined, ...(media?.type === "AUDIO" ? { text: "" } : {}) } : step)) }} style={field}>
+                        <option value="">Somente texto</option>{library.filter(item => ["AUDIO", "IMAGE"].includes(item.type) && !item.viewOnce).map(item => <option key={item.id} value={item.id}>{item.name} ({TYPE_INFO[item.type].label})</option>)}
+                      </select>
+                    </label>
                     <textarea
+                      disabled={library.find(item => item.id === st.quickReplyId)?.type === "AUDIO"}
                       value={st.text}
                       onChange={(e) => {
                         const next = [...seqSteps]
@@ -534,7 +567,7 @@ function EditorModal({
                 ))}
                 <button
                   type="button"
-                  onClick={() => setSeqSteps([...seqSteps, { text: "", delaySec: 2 }])}
+                  disabled={seqSteps.length >= 20} onClick={() => setSeqSteps([...seqSteps, { text: "", delaySec: 2 }])}
                   style={{ ...ghost, alignSelf: "flex-start" }}
                 >
                   + Adicionar passo na sequência
@@ -548,7 +581,7 @@ function EditorModal({
                 <input value={contactName} onChange={(e) => setContactName(e.target.value)} maxLength={100} placeholder="Ex.: Financeiro · Clínica Vivace" style={field} />
                 <label style={label}>Telefone <span style={req}>*</span></label>
                 <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="+55 47 99999-0000" style={field} />
-                <p style={helper}>Chega como cartão de contato: quem recebe toca e salva ou já chama.</p>
+                <p style={helper}>O plugin compartilha nome e telefone em texto.</p>
               </>
             )}
 
@@ -566,19 +599,22 @@ function EditorModal({
               </>
             )}
 
+            <QuickReplyPreview value={{ type: kind, text: kind === "SEQUENCE" ? JSON.stringify(seqSteps) : text, id: editing?.id, file, mediaName: editing?.mediaName, contactName, contactPhone, asVoiceNote, viewOnce }} library={library} />
+            {shortcutTaken && <p role="alert" style={errorText}>Este atalho já está em uso. Escolha outro antes de salvar.</p>}
+            {recordingBusy && <p role="status" style={helper}>Use ou descarte a gravação para continuar.</p>}
             {missing > 0 && <p style={{ color: "var(--wait)", fontSize: 13, margin: "12px 0 0" }}>Faltam {missing} {missing === 1 ? "campo" : "campos"}.</p>}
             {err && <p style={errorText}>{err}</p>}
 
             <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16 }}>
-              <button onClick={onClose} style={ghost}>Cancelar</button>
-              {!editing && <button onClick={() => setKind(null)} style={ghost}>‹ Trocar o tipo</button>}
-              <button onClick={save} disabled={busy || missing > 0} style={{ ...btn, opacity: busy || missing > 0 ? 0.5 : 1 }}>
+              <button onClick={close} style={ghost}>Cancelar</button>
+              {!editing && <button disabled={recordingBusy || busy} onClick={() => { setKind(null); setFile(null); setViewOnce(false); setAsVoiceNote(false) }} style={ghost}>‹ Trocar o tipo</button>}
+              <button onClick={save} disabled={busy || recordingBusy || shortcutTaken || missing > 0} style={{ ...btn, opacity: busy || recordingBusy || shortcutTaken || missing > 0 ? 0.5 : 1 }}>
                 {busy ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </>
         )}
-      </div>
+      </section>
     </div>
   )
 }
@@ -596,4 +632,3 @@ const shortcutChip: React.CSSProperties = { background: "var(--accent-soft)", co
 const tile: React.CSSProperties = { ...inner, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "16px 8px" }
 const varChip: React.CSSProperties = { background: "var(--field)", border: "1px solid var(--soft)", borderRadius: 999, padding: "3px 11px", fontSize: 12, cursor: "pointer", color: "var(--text-2)" }
 const moreBtn: React.CSSProperties = { background: "none", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--text-2)", padding: "14px 0 0", display: "inline-flex", alignItems: "center", gap: 4 }
-const previewBox: React.CSSProperties = { background: "var(--ok-bg)", border: "1px solid var(--ok-line)", borderRadius: 10, padding: "8px 10px", marginTop: 10 }

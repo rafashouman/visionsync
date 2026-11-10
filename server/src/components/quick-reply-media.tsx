@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Mic, Paperclip, Upload } from "lucide-react"
+import { AudioRecorder } from "@/components/audio-recorder"
+import { Paperclip, Upload } from "lucide-react"
 import type { QuickReplyView } from "@/lib/quick-replies"
 import {
   BLOCKED_EXTS, MAX_FILE_BYTES, MEDIA_RULES, fileExt, formatBytes, type MediaKind,
@@ -48,7 +49,7 @@ export function MediaLine({ item, kind }: { item: QuickReplyView; kind: MediaKin
 }
 
 /** Prévia do arquivo que acabou de ser escolhido (ainda não salvo). */
-function LocalPreview({ kind, file }: { kind: MediaKind; file: File }) {
+export function LocalPreview({ kind, file }: { kind: MediaKind; file: File }) {
   const url = useMemo(() => URL.createObjectURL(file), [file])
   useEffect(() => () => URL.revokeObjectURL(url), [url])
   if (kind === "IMAGE") {
@@ -74,16 +75,19 @@ function clientCheck(kind: MediaKind, f: File): string | null {
 
 /** Área de escolher/arrastar o arquivo. Só entrega o arquivo se ele passar na conferência. */
 export function FileDrop({
-  kind, file, onFile, optional,
+  kind, file, onFile, optional, onRecorded, onRecordingBusy,
 }: {
   kind: MediaKind
   file: File | null
   onFile: (f: File | null) => void
+  onRecorded?: (file: File) => void
+  onRecordingBusy?: (busy: boolean) => void
   optional?: boolean // ao editar: trocar o arquivo é opcional
 }) {
   const input = useRef<HTMLInputElement>(null)
   const [err, setErr] = useState<string | null>(null)
   const [over, setOver] = useState(false)
+  const [recordingBusy, setRecordingBusy] = useState(false)
   const rule = MEDIA_RULES[kind]
 
   function pick(f: File | undefined) {
@@ -122,13 +126,9 @@ export function FileDrop({
     return (
       <div>
         {hidden}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <button type="button" disabled title="Em breve: o Chrome grava num formato que o WhatsApp não aceita" style={{ ...tileBtn, opacity: 0.45, cursor: "not-allowed" }}>
-            <Mic size={20} style={{ color: "var(--vred)" }} />
-            <b style={{ fontSize: 13, color: "var(--text)" }}>Gravar agora</b>
-            <span style={{ fontSize: 10, color: "var(--faint)" }}>em breve</span>
-          </button>
-          <button type="button" onClick={() => input.current?.click()} style={tileBtn}>
+        <AudioRecorder onRecorded={onRecorded || onFile} onBusy={busy => { setRecordingBusy(busy); onRecordingBusy?.(busy) }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, marginTop: 10 }}>
+          <button type="button" disabled={recordingBusy} onClick={() => input.current?.click()} style={tileBtn}>
             <Upload size={20} style={{ color: "var(--vred)" }} />
             <b style={{ fontSize: 13, color: "var(--text)" }}>{optional ? "Trocar arquivo" : "Escolher arquivo"}</b>
             <span style={{ fontSize: 10, color: "var(--faint)" }}>{rule.formats}</span>

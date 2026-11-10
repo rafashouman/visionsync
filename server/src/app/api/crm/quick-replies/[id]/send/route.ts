@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { getAuthUser } from "@/lib/crm-auth"
 import { limitedBody } from "@/lib/local-storage"
-import { whatsappDb, getConnection, putJob, ensureWhatsappIndexes, type PilotContact } from "@/lib/whatsapp/store"
+import { whatsappDb, getConnection, putJob, ensureWhatsappIndexes, type Job, type PilotContact } from "@/lib/whatsapp/store"
 import { readReplyMedia, PreparationError } from "@/lib/whatsapp/media"
 import { renderMessage } from "@/lib/whatsapp/policy"
 
@@ -24,6 +24,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     await ensureWhatsappIndexes(db)
     const now = new Date()
     await putJob(db, { userId: user.id, contactId: contact._id, phone: contact.phone, name: contact.name, kind: "quick", text: renderMessage(media.caption, contact.name), attachment: media.attachment, dueAt: now, expiresAt: new Date(now.getTime() + 10 * 60000), eventAt: now, status: parsed.data.approved ? "queued" : "review", approved: parsed.data.approved, key: `quick:${parsed.data.requestId}` })
-    return NextResponse.json({ queued: parsed.data.approved, review: !parsed.data.approved }, { status: 202 })
+    const job = await db.collection<Job>("wa_jobs").findOne({ userId: user.id, key: `quick:${parsed.data.requestId}` })
+    if (!job) return NextResponse.json({ error: "Não foi possível confirmar a fila. Confira antes de tentar novamente." }, { status: 503 })
+    if (job.phone !== contact.phone || job.attachment?.replyId !== media.attachment.replyId) return NextResponse.json({ error: "Esta solicitação já pertence a outro envio." }, { status: 409 })
+    return NextResponse.json({ id: job._id, status: job.status, queued: job.status === "queued", review: job.status === "review" }, { status: 202, headers: { "Cache-Control": "private, no-store" } })
   } catch (error) { return NextResponse.json({ error: error instanceof PreparationError ? error.message : "Não foi possível preparar o envio." }, { status: 400 }) }
 }

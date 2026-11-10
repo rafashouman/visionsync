@@ -7,6 +7,8 @@ export const MAX_TEXT = 4096
 
 /** O que a tela e a extensão recebem. Nunca inclui o conteúdo do arquivo (ele vem de /file). */
 export type QuickReplyView = {
+  categoryColor?: string | null
+  categoryPosition?: number | null
   id: string
   type: QuickReplyKind
   name: string
@@ -63,7 +65,7 @@ export const toView = (r: Row): QuickReplyView => ({
 /** Categoria sempre em maiúsculas, espaços arrumados. Vazio vira null. */
 export const normalizeCategory = (v: string | null | undefined) => {
   const c = (v ?? "").replace(/\s+/g, " ").trim().toUpperCase()
-  return c ? c : null
+  return c && c !== "SEM CATEGORIA" ? c : null
 }
 
 /** Atalho (a palavra depois do ";"): minúsculas, sem o ";" na frente. Vazio vira null. */

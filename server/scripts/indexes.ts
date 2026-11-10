@@ -6,6 +6,7 @@ export async function ensureIndexes(uri: string) {
   try {
     await client.connect()
     const db = client.db()
+    await db.collection("password_resets").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "password_reset_expiry" })
     await db.collection("auth_attempts").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "auth_attempt_expiry" })
     await db.collection("charges").createIndex({ userId: 1, status: 1, dueDate: 1, _id: 1 }, { name: "charges_account_due" })
     await db.collection("contacts").createIndex({ userId: 1, lastActivityAt: -1, _id: -1 }, { name: "contacts_account_cursor" })

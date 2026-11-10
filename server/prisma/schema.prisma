@@ -14,6 +14,8 @@ model User {
   email     String   @unique
   apiTokenHash String?
   apiTokenExpiresAt DateTime?
+  onboardingCompletedAt DateTime?
+  passwordChangedAt DateTime?
   password  String?
   apiToken  String? // token da extensão do Chrome
 
@@ -295,4 +297,22 @@ model CrmListMember {
   @@unique([listId, contactId])
   @@index([contactId])
   @@map("crm_list_members")
+}
+
+model PasswordReset {
+  id String @id @map("_id")
+  userId String
+  expiresAt DateTime
+  @@index([userId])
+  @@map("password_resets")
+}
+
+model QuickReplyCategory {
+  id String @id @default(cuid()) @map("_id")
+  userId String
+  name String
+  color String
+  position Int @default(0)
+  @@unique([userId, name])
+  @@map("quick_reply_categories")
 }

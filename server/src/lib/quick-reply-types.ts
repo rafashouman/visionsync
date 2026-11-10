@@ -5,11 +5,11 @@ export type QuickReplyKind = (typeof QUICK_REPLY_TYPES)[number]
 /** O ícone de cada tipo fica em components/type-icon.tsx. */
 export const TYPE_INFO: Record<QuickReplyKind, { label: string; hint: string; available: boolean }> = {
   TEXT: { label: "Texto", hint: "Uma mensagem de texto pronta", available: true },
-  AUDIO: { label: "Áudio", hint: "Um áudio pronto (.ogg ou .mp3)", available: true },
+  AUDIO: { label: "Áudio", hint: "Grave agora ou escolha um áudio (.ogg ou .mp3)", available: true },
   IMAGE: { label: "Imagem", hint: "Uma imagem com legenda opcional", available: true },
   VIDEO: { label: "Vídeo", hint: "Um vídeo curto com legenda opcional", available: true },
   DOCUMENT: { label: "Documento", hint: "PDF, planilha, zip e outros", available: true },
-  CONTACT: { label: "Contato", hint: "Cartão de contato: quem recebe toca e salva", available: true },
+  CONTACT: { label: "Contato", hint: "Nome e telefone para compartilhar pelo plugin", available: true },
   SEQUENCE: { label: "Sequência", hint: "Várias mensagens enviadas em sequência com intervalo", available: true },
 }
 

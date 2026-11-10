@@ -3,6 +3,9 @@
 import { useState } from "react"
 
 type Props = {
+  preventCopy?: boolean
+  confirmManually?: boolean
+  id?: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
@@ -13,13 +16,19 @@ type Props = {
 }
 
 /** Campo de senha com botão "mostrar / ocultar" pra ver o que está digitando. */
-export function PasswordInput({ value, onChange, placeholder, minLength, autoComplete, variant = "app" }: Props) {
+export function PasswordInput({ value, onChange, placeholder, minLength, autoComplete, variant = "app", preventCopy, confirmManually, id }: Props) {
   const [visible, setVisible] = useState(false)
   const dark = variant === "dark"
 
   return (
     <div style={{ position: "relative" }}>
       <input
+        id={id}
+        onCopy={preventCopy ? (e) => e.preventDefault() : undefined}
+        onCut={preventCopy ? (e) => e.preventDefault() : undefined}
+        onDragStart={preventCopy ? (e) => e.preventDefault() : undefined}
+        onPaste={confirmManually ? (e) => e.preventDefault() : undefined}
+        onDrop={confirmManually ? (e) => e.preventDefault() : undefined}
         type={visible ? "text" : "password"}
         value={value}
         onChange={(e) => onChange(e.target.value)}

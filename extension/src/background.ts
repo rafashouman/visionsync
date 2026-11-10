@@ -1,3 +1,4 @@
+import { safeServerHealth, safeTabHealth } from "./diagnostics"
 import { allowedAvatarUrl, allowedMessage, allowedUpload, normalizeApiUrl, type ApiMessage, type FileMessage, type UploadMessage } from "./policy"
 
 type Result = { ok: boolean; status: number; error?: string; data?: unknown; base64?: string; mime?: string }
@@ -73,6 +74,22 @@ async function repairTabs() {
   }))
   return { ok: results.every(r => r.status === "fulfilled"), repaired: results.filter(r => r.status === "fulfilled").length }
 }
+async function runDiagnostics() {
+  const cfg = await chrome.storage.local.get(["apiUrl", "token"])
+  const configured = Boolean(cfg.apiUrl && cfg.token)
+  let permitted = false
+  try { permitted = !!cfg.apiUrl && await chrome.permissions.contains({ origins: [normalizeApiUrl(String(cfg.apiUrl)) + "/*"] }) } catch { /* invalid URL */ }
+  const result = configured && permitted ? await request({ type: "api", method: "GET", path: "/api/crm/diagnostics" }).catch(() => ({ ok: false, status: 0, data: null })) : { ok: false, status: 0, data: null }
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" })
+  const checks = await Promise.all(tabs.slice(0, 8).map(async tab => {
+    try { return safeTabHealth(await Promise.race([chrome.tabs.sendMessage(tab.id!, { type: "connection-probe" }), new Promise(resolve => setTimeout(() => resolve(null), 3000))])) }
+    catch { return safeTabHealth(null) }
+  }))
+  const server = result.ok ? safeServerHealth(result.data) : null
+  const compatible = server?.protocol === 1
+  return { version: chrome.runtime.getManifest().version, checkedAt: new Date().toISOString(), configured, permitted, crm: { ok: result.ok && compatible, status: result.ok && !compatible ? 426 : result.status }, server: compatible ? server : null, tabs: checks }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   // Tokens are inaccessible to untrusted content-script storage contexts.
   void chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }).catch(() => {})
@@ -86,6 +103,10 @@ chrome.runtime.onMessage.addListener((value: unknown, sender, respond) => {
   if (!popup && !whatsapp) return false
   if (popup && value && typeof value === "object" && "type" in value && value.type === "repair-tabs") {
     repairTabs().then(respond).catch(() => respond({ ok: false, repaired: 0 }))
+    return true
+  }
+  if (popup && value && typeof value === "object" && "type" in value && value.type === "connection-diagnostics") {
+    runDiagnostics().then(respond).catch(() => respond({ error: "diagnostic_failed" }))
     return true
   }
   if (whatsapp && allowedUpload(value)) {

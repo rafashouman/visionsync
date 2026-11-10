@@ -1,51 +1,7 @@
-"use client"
+import { LoginForm } from "@/components/login-form"
 
-import { useState } from "react"
-import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { AuthBackground } from "@/components/auth-background"
-import { BrandLogo } from "@/components/brand-logo"
-import { ThemePicker } from "@/components/theme-picker"
-import { PasswordInput } from "@/components/password-input"
-
-export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    const res = await signIn("credentials", { email, password, redirect: false })
-    setLoading(false)
-    if (res?.error) {
-      setError("Email ou senha incorretos. Se ainda não tem conta, clique em Cadastre-se.")
-    } else {
-      router.push("/dashboard")
-      router.refresh()
-    }
-  }
-
-  return (
-    <AuthBackground>
-      <form onSubmit={handleSubmit} className="auth-card">
-        <h1 className="auth-title"><BrandLogo size="big" /></h1>
-        <p className="auth-sub">Entre na sua conta</p>
-        <label className="auth-label">Email</label>
-        <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-        <label className="auth-label">Senha</label>
-        <PasswordInput variant="dark" value={password} onChange={setPassword} autoComplete="current-password" />
-        {error && <p className="auth-error">{error}</p>}
-        <button className="auth-btn" disabled={loading}>{loading ? "Entrando..." : "Entrar"}</button>
-        <p className="auth-foot">
-          Não tem conta? <Link href="/cadastro">Cadastre-se</Link>
-        </p>
-        <details className="vs-auth-appearance"><summary>Aparência</summary><ThemePicker compact /></details>
-      </form>
-    </AuthBackground>
-  )
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ cadastro?: string; senha?: string; respostas?: string }> }) {
+  const query = await searchParams
+  const notice = query.cadastro === "sucesso" ? "Conta criada! Entre com seu email e senha para começar." : query.senha === "redefinida" ? "Senha atualizada! Entre com sua nova senha." : ""
+  return <LoginForm notice={notice} replies={query.respostas} />
 }

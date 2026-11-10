@@ -6,7 +6,7 @@
   <title>VisionSync</title>
   <link rel="stylesheet" href="../panel.css" />
   <style>
-body { width:320px; margin:0; padding:18px; box-sizing:border-box; font:13px/1.5 'Segoe UI',system-ui,sans-serif; color:var(--v-text); background:var(--v-bg); }
+body { width:360px; margin:0; padding:18px; box-sizing:border-box; font:13px/1.5 'Segoe UI',system-ui,sans-serif; color:var(--v-text); background:var(--v-bg); }
 h1 { font-size:20px; margin:0; color:var(--v-text); } h1 b { color:var(--v-accent-text); }
 p.sub { color:var(--v-gold); margin:4px 0 16px; font-size:12px; }
 label { display:block; margin:12px 0 5px; color:var(--v-text-2); font-weight:600; }
@@ -15,11 +15,15 @@ button { width:100%; padding:11px; margin-top:14px; border:0; border-radius:10px
 #repair { color:var(--v-accent-text); background:var(--v-field); border:1px solid var(--v-line); }
 button:disabled { opacity:.6; cursor:wait; } :focus-visible { outline:2px solid var(--v-gold); outline-offset:2px; }
 .msg { min-height:18px; margin-top:12px; } .ok {color:var(--v-ok);} .err {color:var(--v-danger);}
+.connection-card { border:1px solid var(--v-line); border-radius:12px; padding:12px; margin-top:16px; }
+.connection-card h2 { font-size:14px; margin:0; } .connection-hint { font-size:11px; color:var(--v-muted); margin:6px 0; }
+#health { font-size:12px; margin:12px 0; } #health dt { color:var(--v-text-2); margin-top:9px; } #health dd { margin:2px 0 0; overflow-wrap:anywhere; }
+#diagnose, #copy-diagnostic { margin-top:8px; padding:8px; } #copy-diagnostic { background:var(--v-field); border:1px solid var(--v-line); color:var(--v-accent-text); }
 </style>
 </head>
 <body>
   <h1 class="vc-popup-brand" aria-label="VisionSync"><img class="vc-brand-on-dark" src="../brand/logo-small-wh.png" alt="" /><img class="vc-brand-on-light" src="../brand/logo-small-dark.png" alt="" /></h1>
-  <p class="sub">VisionSync 0.20.5</p>
+  <p class="sub">VisionSync 0.22.0</p>
   <label for="theme">Aparência</label>
   <select id="theme"><option value="dark">Vision escuro</option><option value="light">Vision claro</option><option value="minimal">Vision minimalista</option></select>
 
@@ -31,7 +35,15 @@ button:disabled { opacity:.6; cursor:wait; } :focus-visible { outline:2px solid 
 
   <button id="save">Salvar e testar conexão</button>
   <button id="repair" type="button">Reativar nas abas do WhatsApp</button>
-  <div class="msg" id="msg"></div>
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+  <section class="connection-card" aria-labelledby="connection-title">
+    <h2 id="connection-title">Estado da conexão</h2>
+    <p class="connection-hint">Confira o CRM, o plugin e o conector de envios separadamente.</p>
+    <dl id="health" aria-live="polite"><dt>Diagnóstico</dt><dd>Ainda não verificado</dd></dl>
+    <button id="diagnose" type="button">Testar conexão</button>
+    <button id="copy-diagnostic" type="button" disabled>Copiar diagnóstico seguro</button>
+    <p class="connection-hint">O diagnóstico não inclui token, nomes, telefones ou mensagens.</p>
+  </section>
 
   <script src="popup.js"></script>
 </body>

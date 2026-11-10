@@ -7,7 +7,7 @@
     "extension"
   ],
   "scripts": {
-    "dev": "npm run extension:build && npm run dev --workspace @visionsync/web",
+    "dev": "npm run db:generate && npm run db:prepare && npm run extension:build && npm run dev --workspace @visionsync/web",
     "build": "npm run build --workspace @visionsync/extension && npm run build --workspace @visionsync/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
@@ -16,7 +16,8 @@
     "db:indexes": "npm run db:indexes --workspace @visionsync/web",
     "db:migrate:legacy": "npm run db:migrate:legacy --workspace @visionsync/web",
     "extension:build": "npm run build --workspace @visionsync/extension",
-    "whatsapp:worker": "npm run whatsapp:worker --workspace @visionsync/web"
+    "whatsapp:worker": "npm run whatsapp:worker --workspace @visionsync/web",
+    "db:prepare": "npm run db:prepare --workspace @visionsync/web"
   },
   "engines": {
     "node": ">=22.14"

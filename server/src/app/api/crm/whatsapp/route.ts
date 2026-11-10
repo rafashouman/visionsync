@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "node:crypto"
 import QRCode from "qrcode"
 import { z } from "zod"
+import { hasTrustedOrigin } from "@/lib/request-origin"
 import { auth } from "@/lib/auth"
 import { decryptSecret } from "@/lib/crypto"
 import { limitedBody } from "@/lib/local-storage"
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   // Connector administration is session-only. Extension tokens cannot pair or send.
-  if (req.headers.get("origin") !== new URL(req.url).origin) return NextResponse.json({ error: "Origem inválida" }, { status: 403 })
+  if (!hasTrustedOrigin(req)) return NextResponse.json({ error: "Origem inválida" }, { status: 403 })
   let raw: string
   try { raw = Buffer.from(await limitedBody(req, 16000)).toString("utf8") }
   catch { return NextResponse.json({ error: "Solicitação muito grande ou inválida" }, { status: 413 }) }

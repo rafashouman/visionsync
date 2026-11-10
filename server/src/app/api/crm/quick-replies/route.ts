@@ -1,3 +1,4 @@
+import { categoryViews } from "@/lib/quick-reply-library"
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
@@ -18,7 +19,12 @@ export async function GET(req: NextRequest) {
     where: { userId: user.id },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   })
-  return NextResponse.json(rows.map(toView))
+  const saved = await prisma.quickReplyCategory.findMany({ where: { userId: user.id } })
+  const categories = categoryViews(rows, saved)
+  return NextResponse.json(rows.map(row => {
+    const category = categories.find(item => item.name === row.category)
+    return { ...toView(row), categoryColor: category?.color ?? null, categoryPosition: category?.position ?? null }
+  }), { headers: { "Cache-Control": "private, no-store" } })
 }
 
 const base = z.object({

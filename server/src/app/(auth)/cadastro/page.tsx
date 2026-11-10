@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { AuthBackground } from "@/components/auth-background"
@@ -30,28 +29,20 @@ export default function CadastroPage() {
     }
 
     setLoading(true)
-    let created = false
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, confirmPassword: confirm }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         setError(d.error || "Erro ao cadastrar.")
         return
       }
-      created = true
-      const result = await signIn("credentials", { email, password, redirect: false })
-      if (!result?.ok || result.error) {
-        setError("Conta criada, mas não foi possível entrar automaticamente. Acesse pela tela de login.")
-        return
-      }
-      router.push("/dashboard")
-      router.refresh()
+      router.push("/login?cadastro=sucesso")
     } catch {
-      setError(created ? "Conta criada, mas não foi possível entrar automaticamente. Acesse pela tela de login." : "Não foi possível conectar ao servidor. Tente novamente.")
+      setError("Não foi possível conectar ao servidor. Tente novamente.")
     } finally {
       setLoading(false)
     }
@@ -62,14 +53,14 @@ export default function CadastroPage() {
       <form onSubmit={handleSubmit} className="auth-card">
         <h1 className="auth-title"><BrandLogo size="big" /></h1>
         <p className="auth-sub">Crie sua conta</p>
-        <label className="auth-label">Nome</label>
-        <input className="auth-input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
-        <label className="auth-label">Email</label>
-        <input className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
-        <label className="auth-label">Senha (mínimo 10 caracteres)</label>
-        <PasswordInput variant="dark" value={password} onChange={setPassword} minLength={10} autoComplete="new-password" />
-        <label className="auth-label">Confirmar senha</label>
-        <PasswordInput variant="dark" value={confirm} onChange={setConfirm} minLength={10} autoComplete="new-password" />
+        <label className="auth-label" htmlFor="name">Nome</label>
+        <input id="name" className="auth-input" value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" required />
+        <label className="auth-label" htmlFor="email">Email</label>
+        <input id="email" className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+        <label className="auth-label" htmlFor="password">Senha (mínimo 8 caracteres)</label>
+        <PasswordInput id="password" variant="dark" value={password} onChange={setPassword} preventCopy minLength={8} autoComplete="new-password" />
+        <label className="auth-label" htmlFor="confirm-password">Confirmar senha</label>
+        <PasswordInput id="confirm-password" variant="dark" value={confirm} onChange={setConfirm} confirmManually minLength={8} autoComplete="new-password" />
         {mismatch && <p className="auth-error" style={{ fontSize: 12, marginTop: 6 }}>As senhas não são iguais.</p>}
         {error && <p className="auth-error">{error}</p>}
         <button className="auth-btn" disabled={loading || mismatch}>{loading ? "Criando..." : "Criar conta"}</button>

@@ -42,6 +42,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { label: "Ferramentas", icon: Wrench, href: "/dashboard/ferramentas" },
       { label: "Configurações", icon: Settings, href: "/dashboard/configuracoes" },
+      { label: "Guia de primeiro acesso", icon: Puzzle, href: "/dashboard/tutorial" },
       { label: "Plugin WhatsApp", icon: Puzzle, href: "/dashboard/extensao" },
     ],
   },

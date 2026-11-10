@@ -15,7 +15,7 @@ const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
 const PANEL_W = 340
 const RAIL_W = 44
-const SCRIPT_VERSION = "0.20.5"
+const SCRIPT_VERSION = "0.22.0"
 
 const state = {
   open: false,
@@ -33,6 +33,40 @@ const state = {
   apiUrl: "",
   status: "idle", // idle | loading | ok | no_config | bad_token | offline
   toast: "",
+}
+
+const SEND_LABELS = {
+  blocked: "Revise o rascunho atual", preparing: "Preparando resposta", prepared: "Preparado para revisão", requested: "Envio solicitado ao WhatsApp",
+  review: "Aguardando aprovação no servidor", queued: "Na fila do servidor", sending: "Transmitindo pelo servidor",
+  submitted: "Transmitido pelo servidor", delivered: "Entregue", read: "Lida", uncertain: "Resultado incerto",
+  canceled: "Envio cancelado", expired: "Envio expirado", failed: "Não foi possível concluir",
+}
+let sendFeedback = { status: "idle", detail: "", jobId: null, updatedAt: null }
+let lastQuickKey = null
+function sendState(status, detail = "", jobId = null, phone = status === "preparing" ? state.phone : (sendFeedback.phone || state.phone)) {
+  sendFeedback = { status, detail, jobId, phone, updatedAt: new Date().toISOString() }
+  const host = document.getElementById?.(ROOT_ID)?.querySelector(".vc-send-feedback")
+  if (host) host.innerHTML = renderSendFeedback()
+}
+function renderSendFeedback() {
+  if (sendFeedback.status === "idle") return ""
+  if (sendFeedback.phone && sendFeedback.phone !== state.phone) return '<div class="vc-send-card"><b>Última ação em outra conversa</b><small>Abra a conversa original para acompanhar o estado, ou confira a fila no site.</small><button class="vc-link" data-act="server-queue">Abrir fila no site</button></div>'
+  return `<div class="vc-send-card" role="status" aria-live="polite" data-send-state="${esc(sendFeedback.status)}"><b>${esc(SEND_LABELS[sendFeedback.status] || "Estado indisponível")}</b><small>${esc(sendFeedback.detail)}</small>${sendFeedback.jobId ? '<button class="vc-link" data-act="send-status">Atualizar estado</button><button class="vc-link" data-act="server-queue">Abrir fila no site</button>' : ""}${lastQuickKey ? '<button class="vc-link" data-act="new-server-send">Preparar outro envio</button>' : ""}</div>`
+}
+let jobCheckBusy = false
+async function refreshSendStatus() {
+  const jobId = sendFeedback.jobId
+  const originalPhone = sendFeedback.phone
+  if (!jobId || jobCheckBusy || extensionLife.expired) return
+  jobCheckBusy = true
+  try {
+    const result = await api("GET", `/api/crm/quick-replies/jobs/${jobId}`)
+    if (sendFeedback.jobId !== jobId) return
+    if (result.ok && SEND_LABELS[result.data?.status]) {
+      const status = result.data.status
+      sendState(status, ["review", "queued", "sending"].includes(status) ? "Acompanhe ou aprove em Envios no servidor. Não é confirmação de entrega." : status === "uncertain" ? "Confira a conversa antes de criar outro envio. Não haverá repetição automática." : "Estado informado pelo conector do servidor.", jobId, originalPhone)
+    } else sendState(sendFeedback.status, "Não foi possível atualizar. Confira a fila no site antes de tentar enviar novamente.", jobId, originalPhone)
+  } finally { jobCheckBusy = false }
 }
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
@@ -318,27 +352,10 @@ function getComposer() {
 
 /** Diagnóstico: só a ESTRUTURA da página (números viram 9), nada de texto de conversa. */
 function collectDiagnostic() {
-  const mask = (t) => String(t || "").replace(/[0-9]/g, "9").slice(0, 120)
-  const main = document.querySelector("#main")
-  const header = document.querySelector("#main header") || document.querySelector("header")
-  const ids = main ? [...main.querySelectorAll("[data-id]")].slice(0, 6).map((e) => mask(e.getAttribute("data-id"))) : []
-  const pre = main ? [...main.querySelectorAll("[data-pre-plain-text]")].slice(0, 2).map((e) => mask(e.getAttribute("data-pre-plain-text"))) : []
-  const titles = header ? [...header.querySelectorAll("[title]")].slice(0, 4).map((e) => mask(e.getAttribute("title"))) : []
-  const attrs = new Set()
-  if (main) main.querySelectorAll("*").forEach((e) => { for (const a of e.attributes) if (/^data-/.test(a.name)) attrs.add(a.name) })
-  return JSON.stringify({
-    versao: "diag2",
-    temMain: !!main,
-    temHeader: !!header,
-    totalDataId: main ? main.querySelectorAll("[data-id]").length : 0,
-    exemplosDataId: ids,
-    exemplosPrePlain: pre,
-    titulosHeader: titles,
-    atributosData: [...attrs].slice(0, 25),
-    temCampo: !!getComposer(),
-    telefoneLido: state.phone ? "sim" : "nao",
-    ponte: state.bridgeDbg || null,
-  }, null, 1)
+  return JSON.stringify({ version: SCRIPT_VERSION, status: state.status, lastSyncAt: state.lastSyncAt || null,
+    main: !!document.querySelector("#main"), composer: !!getComposer(), contactResolved: !!state.phone,
+    expired: extensionLife.expired, sendStatus: sendFeedback.status,
+  }, null, 2)
 }
 
 /** Escreve no campo de mensagem (não envia: quem aperta Enter é ela). */
@@ -419,7 +436,7 @@ function toast(msg) {
 
 function mediaPicker(id) {
   return `<label>Áudio ou imagem</label><select id="${id}" name="scheduledReplyId"><option value="">Sem anexo</option>${state.replies.filter(r => ["AUDIO", "IMAGE"].includes(r.type) && !r.viewOnce).map(r => `<option value="${esc(r.id)}">${esc(r.name)} (${r.type === "AUDIO" ? "áudio" : "imagem"})</option>`).join("")}</select>
-    <label class="vc-upload">Anexar arquivo do computador<input type="file" data-upload-picker="${id}" accept=".ogg,.mp3,.jpg,.jpeg,.png,.webp" /></label><small>Até 4 MB. Para áudio, deixe o campo de texto vazio.</small>`
+    <p class="vc-muted vc-tiny">Lembrete no navegador: avisa no horário e precisa da sua ação. Para execução automática, use Envios no servidor no site.</p><label class="vc-upload">Anexar arquivo do computador<input type="file" data-upload-picker="${id}" accept=".ogg,.mp3,.jpg,.jpeg,.png,.webp" /></label><small>Até 4 MB. Para áudio, deixe o campo de texto vazio.</small>`
 }
 let mediaUploadCount = 0
 async function uploadReplyFile(file, options = {}) {
@@ -496,7 +513,7 @@ function render() {
         <div class="vc-title">${esc(active ? active.label : "")}</div><small class="vc-version">v${SCRIPT_VERSION}</small>
         <button class="vc-x" data-act="close" title="Fechar">${icon("x", 18)}</button>
       </header>
-      <div class="vc-body">${renderBody()}</div>
+      <div class="vc-body"><div class="vc-send-feedback">${renderSendFeedback()}</div>${renderBody()}</div>
     </section>` : ""}
     ${state.toast ? `<div class="vc-toast">${esc(state.toast)}</div>` : ""}
   `
@@ -810,9 +827,9 @@ function renderReminders() {
   const mine = state.reminders
   return `
     <form class="vc-card" data-form="reminder">
-      <div class="vc-sec first">Novo lembrete / Agendar mensagem</div>
+      <div class="vc-sec first">Lembrete com mensagem preparada</div>
       <input name="text" maxlength="300" placeholder="O que lembrar? Ex.: cobrar o pacote" required />
-      <textarea name="scheduledMessage" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional — usa variáveis como {primeiro_nome})"></textarea>
+      <textarea name="scheduledMessage" rows="2" maxlength="2000" placeholder="Mensagem para revisar no horário (opcional — usa variáveis como {primeiro_nome})"></textarea>
       ${mediaPicker("reminder-media")}
       <input name="at" type="datetime-local" value="${tomorrow9()}" required />
       <div class="vc-actions">
@@ -824,9 +841,9 @@ function renderReminders() {
     ${mine.length ? mine.map((r) => `
       <div class="vc-card charge ${r.state === "atrasado" ? "vencida" : ""}">
         <div class="vc-row flat"><div><b>${esc(r.text)}</b><span>${whenFmt(r.dueAt)}${r.snoozeCount ? " · adiado " + r.snoozeCount + "×" : ""}</span></div><span class="vc-badge ${r.state === "atrasado" ? "vencida" : r.state === "hoje" ? "pendente" : "cancelada"}">${r.state === "atrasado" ? "Atrasado" : r.state === "hoje" ? "Hoje" : "Próximo"}</span></div>
-        ${r.scheduledMessage ? `<div class="vc-sched-msg"><small>Mensagem agendada:</small><p>${esc(r.scheduledMessage)}</p></div>` : ""}
+        ${r.scheduledMessage ? `<div class="vc-sched-msg"><small>Mensagem preparada para o lembrete:</small><p>${esc(r.scheduledMessage)}</p></div>` : ""}
         <div class="vc-actions">
-          ${r.scheduledMessage || r.scheduledReplyId ? `<button class="vc-btn sm" data-rem-send="${esc(r.id)}">${icon("send", 13)} Enviar agora</button>` : ""}
+          ${r.scheduledMessage || r.scheduledReplyId ? `<button class="vc-btn sm" data-rem-send="${esc(r.id)}">${icon("send", 13)} ${prefs.sendDirect ? "Solicitar envio" : "Preparar para revisão"}</button>` : ""}
           <button class="vc-btn sm" data-rem-done="${esc(r.id)}">Feito</button>
           <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:1h">+1h</button>
           <button class="vc-ghost" data-rem-snooze="${esc(r.id)}:amanha">Amanhã</button>
@@ -880,9 +897,20 @@ const rp = { form: null, prefsOpen: false, msg: "" }
 const catName = (r) => r.category || "Sem categoria"
 const VAR_CHIPS = [["{primeiro_nome}", "Primeiro nome"], ["{nome_completo}", "Nome completo"], ["{saudacao}", "Saudação"], ["{seu_nome}", "Seu nome"], ["{telefone}", "Telefone"], ["{data_de_hoje}", "Data de hoje"], ["{hora_agora}", "Hora agora"]]
 
+let librarySyncBusy = false
 async function loadReplies() {
   const res = await api("GET", "/api/crm/quick-replies")
-  if (res.ok && Array.isArray(res.data)) state.replies = res.data
+  if (res.ok && Array.isArray(res.data)) { state.replies = res.data; state.lastSyncAt = new Date().toISOString(); return true }
+  return false
+}
+async function syncReplyLibrary(manual = false) {
+  if (librarySyncBusy || extensionLife.expired || (!manual && document.hidden)) return
+  librarySyncBusy = true
+  try {
+    const loaded = await loadReplies()
+    if (loaded) { ensureBar(); if (state.tab === "respostas" && state.open && !rp.form) render() }
+    if (manual) toast(loaded ? "Respostas atualizadas." : "Não foi possível atualizar. A biblioteca anterior foi mantida.")
+  } finally { librarySyncBusy = false }
 }
 
 function openReplyForm(init) {
@@ -939,15 +967,16 @@ function renderReplies() {
   const list = state.replies.filter((r) => !q || r.name.toLowerCase().includes(q) || (r.shortcut || "").toLowerCase().includes(q) || (r.text || "").toLowerCase().includes(q) || catName(r).toLowerCase().includes(q))
   const groups = new Map()
   for (const r of list) { const c = catName(r); if (!groups.has(c)) groups.set(c, []); groups.get(c).push(r) }
-  const cats = [...groups.keys()].sort((a, b) => (a === "Sem categoria" ? 1 : b === "Sem categoria" ? -1 : a.localeCompare(b, "pt-BR")))
+  const position = name => state.replies.find(reply => catName(reply) === name)?.categoryPosition ?? 9999
+  const cats = [...groups.keys()].sort((a, b) => (a === "Sem categoria" ? 1 : b === "Sem categoria" ? -1 : position(a) - position(b)))
 
   const prefsBox = rp.prefsOpen ? `<div class="vc-card rp-prefs">
       <div class="vc-sec first">Preferências</div>
       <div class="rp-line"><span>Estilo dos chips</span><span class="rp-seg"><button type="button" data-rp-act="style-icon" class="${prefs.chipStyle === "icon" ? "on" : ""}">Ícone</button><button type="button" data-rp-act="style-color" class="${prefs.chipStyle === "color" ? "on" : ""}">Colorido</button></span></div>
-      <label class="vc-check"><input type="checkbox" data-pref="sendDirect" ${prefs.sendDirect ? "checked" : ""}/> <span>Mensagem sai direto</span></label>
+      <label class="vc-check"><input type="checkbox" data-pref="sendDirect" ${prefs.sendDirect ? "checked" : ""}/> <span>Enviar agora ao clicar</span></label>
     </div>` : ""
 
-  return `<div class="rp-top">
+  return `<div class="vc-send-modes" role="group" aria-label="Modo de envio"><button data-rp-act="mode-review" aria-pressed="${!prefs.sendDirect}">Preparar para revisão</button><button data-rp-act="mode-send" aria-pressed="${!!prefs.sendDirect}">Enviar agora</button></div><p class="vc-muted vc-tiny">${prefs.sendDirect ? "Clicar em uma resposta solicita o envio. Sequências executam todos os passos." : "Clicar prepara a resposta. Sequências não enviam neste modo."}</p><button class="vc-link vc-tiny" data-rp-act="sync">Atualizar respostas</button><small class="vc-library-sync">${state.lastSyncAt ? "Sincronizado às " + new Date(state.lastSyncAt).toLocaleTimeString("pt-BR") : "Biblioteca ainda não sincronizada"}</small><div class="rp-top">
       <div class="rp-search"><input class="vc-search" data-search placeholder="Buscar mensagem…" value="${esc(state.repliesQuery)}" /></div>
       <button class="vc-btn" data-rp-act="new">${icon("plus", 14)} Nova</button>
     </div>
@@ -958,7 +987,7 @@ function renderReplies() {
     ${cats.length ? cats.map((c) => {
       const closed = !!(prefs.collapsed && prefs.collapsed[c])
       const items = groups.get(c)
-      return `<div class="rp-cat-head" data-rp-act="toggle" data-rp-cat="${esc(c)}"><i style="background:hsl(${catHue(c)} 60% 55%)"></i><b>${esc(c.toUpperCase())}</b><span>(${items.length})</span><em>${icon(closed ? "chevronright" : "chevrondown", 14)}</em></div>${closed ? "" : items.map(rpCard).join("")}`
+      return `<div class="rp-cat-head" data-rp-act="toggle" data-rp-cat="${esc(c)}"><i style="background:${esc(state.replies.find(reply => catName(reply) === c)?.categoryColor || `hsl(${catHue(c)} 60% 55%)`)}"></i><b>${esc(c.toUpperCase())}</b><span>(${items.length})</span><em>${icon(closed ? "chevronright" : "chevrondown", 14)}</em></div>${closed ? "" : items.map(rpCard).join("")}`
     }).join("") : `<p class="vc-muted">${state.replies.length ? "Nenhuma resposta encontrada." : "Você ainda não tem respostas rápidas. Clique em + Nova pra criar a primeira."}</p>`}`
 }
 
@@ -1018,7 +1047,9 @@ function renderReplyForm() {
 
 async function onReplyAction(act, id, btn) {
   const r = id ? state.replies.find((x) => x.id === id) : null
-  if (act === "new") return openReplyForm({})
+  if (act === "mode-review" || act === "mode-send") { prefs.sendDirect = act === "mode-send"; savePrefs(); ensureBar(); return render() }
+  if (act === "sync") return syncReplyLibrary(true)
+  if (act === "new") return window.open(state.apiUrl + "/dashboard/respostas?nova=1", "_blank", "noopener,noreferrer")
   if (act === "cancel") { rp.form = null; rp.msg = ""; return render() }
   if (act === "compact") { prefs.compact = !prefs.compact; savePrefs(); return render() }
   if (act === "prefs") { rp.prefsOpen = !rp.prefsOpen; return render() }
@@ -1117,20 +1148,35 @@ function replyPreview(r) {
 /** Usa uma resposta: texto, contato, sequência com delay (HotZapp) ou anexos. */
 let replyBusy = false
 const quickSendRequests = new Map()
-async function useReply(r) {
+async function useReply(r, options = {}) {
   if (extensionLife.expired) return false
   if (replyBusy) { toast("Aguarde a resposta atual terminar."); return false }
   replyBusy = true
-  try { return await runReply(r) }
-  catch (error) { handleExtensionError(error); if (!extensionLife.expired) toast("Não foi possível preparar a resposta. Tente novamente."); return false }
-  finally { replyBusy = false }
+  if (!(r.type === "AUDIO" && r.asVoiceNote)) lastQuickKey = null
+  try {
+    const direct = options.sendDirect ?? !!prefs.sendDirect
+    if (direct && !(r.type === "AUDIO" && r.asVoiceNote) && String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) {
+      sendState("blocked", "Há texto no campo de mensagem. Revise, envie ou limpe o rascunho antes de usar Enviar agora. Nada foi acrescentado.")
+      toast("Revise o texto já digitado antes de solicitar outro envio.")
+      return false
+    }
+    sendState("preparing", "Nenhuma confirmação de entrega ainda.")
+    return await runReply(r, direct)
+  }
+  catch (error) { handleExtensionError(error); if (!extensionLife.expired) { sendState("failed", "Confira a conversa antes de tentar novamente."); toast("Não foi possível preparar a resposta. Tente novamente.") }; return false }
+  finally { if (sendFeedback.status === "preparing") sendState("failed", "Operação interrompida. Confira a conversa antes de tentar novamente."); replyBusy = false }
 }
-async function runReply(r) {
+async function runReply(r, direct = !!prefs.sendDirect) {
   if (extensionLife.expired) return false
   if (r.type === "SEQUENCE") {
+    if (!direct) {
+      sendState("prepared", "Sequência não iniciada. Escolha Enviar agora para executar seus passos e intervalos.")
+      toast("Sequência não enviada. Ative Enviar agora para iniciar o roteiro.")
+      return false
+    }
     const steps = parseSequenceSteps(r.text).filter((s) => s.text.trim() || s.quickReplyId)
-    if (!steps.length) return toast("Esta sequência está vazia.")
-    if (!getComposer()) return toast("Abra uma conversa pra disparar a sequência.")
+    if (!steps.length) { sendState("failed", "Esta sequência está vazia."); return false }
+    if (!getComposer()) { sendState("failed", "Abra uma conversa para iniciar o roteiro."); return false }
     api("POST", `/api/crm/quick-replies/${r.id}/use`)
     const phone = state.phone
     for (let i = 0; i < steps.length; i++) {
@@ -1141,37 +1187,45 @@ async function runReply(r) {
       } else {
         toast(`Sequência "${r.name}": enviando passo ${i + 1}/${steps.length}…`)
       }
-      if (extensionLife.expired || state.phone !== phone) { toast("Sequência interrompida: a conversa mudou."); return false }
+      if (extensionLife.expired || state.phone !== phone) { sendState("canceled", "A conversa mudou. A sequência parou; confira os passos já solicitados."); toast("Sequência interrompida: a conversa mudou."); return false }
       if (st.quickReplyId) {
         const media = state.replies.find(reply => reply.id === st.quickReplyId && ["AUDIO", "IMAGE"].includes(reply.type))
-        if (!media) { toast("Mídia do roteiro não encontrada. Atualize a biblioteca."); return false }
-        if (!prefs.sendDirect) { toast("Ative Mensagem sai direto para executar passos de mídia. Sequência interrompida."); return false }
-        const sent = await attachFile({ ...media, ...(media.type === "IMAGE" && st.text ? { text: st.text } : {}) })
+        if (!media) { sendState("failed", "Mídia não encontrada. Sequência interrompida; confira os passos anteriores."); toast("Mídia do roteiro não encontrada. Atualize a biblioteca."); return false }
+        const sent = await attachFile({ ...media, ...(media.type === "IMAGE" && st.text ? { text: st.text } : {}) }, direct)
         if (!sent) return false
-        if (media.asVoiceNote) { toast("Nota de voz na fila do servidor. Confira o envio antes de continuar o roteiro."); return false }
         continue
       }
+      if (String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) {
+        sendState("uncertain", "Ainda há texto no campo. Sequência interrompida para evitar juntar duas mensagens; confira a conversa.")
+        return false
+      }
       const msg = renderVariables(st.text)
-      if (!insertIntoComposer(msg)) return
+      if (!insertIntoComposer(msg)) { sendState("failed", "A sequência parou na preparação de um passo. Confira a conversa antes de repetir."); return false }
       await new Promise((res) => later(res, 180))
-      if (!await clickSend(2000)) { toast("Não confirmei o envio. Sequência interrompida."); return false }
+      if (!await clickSend(2000, false, phone)) { sendState("uncertain", "Sequência interrompida. Confira a conversa antes de repetir."); toast("Não confirmei o envio. Sequência interrompida."); return false }
       await new Promise((res) => later(res, 350))
     }
-    toast(`Sequência "${r.name}" enviada (${steps.length} mensagens)!`)
-    return
+    sendState("requested", `${steps.length} solicitações de envio executadas. Confira a conversa; entrega não confirmada pelo plugin.`)
+    toast("Sequência executada. Confira a conversa para confirmar os envios.")
+    return true
   }
   if (r.type === "TEXT" || r.type === "CONTACT") {
+    const targetPhone = state.phone
     const text = r.type === "TEXT" ? renderVariables(r.text || "") : `${r.contactName || ""}: ${r.contactPhone || ""}`.trim()
-    if (!insertIntoComposer(text)) return
+    if (!insertIntoComposer(text)) { sendState("failed", "A resposta não foi inserida. Confira o campo de mensagem."); return false }
     api("POST", `/api/crm/quick-replies/${r.id}/use`)
-    // "Mensagem sai direto": igual ao Hotzapp, clicar na resposta já envia
-    if (prefs.sendDirect) {
+    // "Enviar agora ao clicar": igual ao Hotzapp, clicar na resposta já envia
+    if (direct) {
       await new Promise((res) => later(res, 150))
-      await clickSend(1500)
+      if (extensionLife.expired || state.phone !== targetPhone) { sendState("canceled", "A conversa mudou. Nenhum novo envio foi solicitado."); return false }
+      const requested = await clickSend(1500, false, targetPhone)
+      sendState(requested ? "requested" : "uncertain", requested ? "Confira a conversa. O clique no botão não confirma entrega." : "Não foi possível confirmar a ação. Confira a conversa antes de repetir.")
+      return requested
     }
-    return
+    sendState("prepared", "A resposta está no campo de mensagem. Revise e envie pelo WhatsApp.")
+    return false
   }
-  if (["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(r.type)) return attachFile(r)
+  if (["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(r.type)) return attachFile(r, direct)
   toast("Este tipo de resposta ainda não funciona pela extensão.")
 }
 
@@ -1184,17 +1238,21 @@ function fileApi(path) {
  * de mensagem. O WhatsApp abre a tela de pré-visualização; a legenda é escrita nela e QUEM
  * ENVIA É VOCÊ (Enter). Áudio entra como arquivo de áudio, ainda não como "gravado na hora".
  */
-async function attachFile(r) {
+async function attachFile(r, direct = !!prefs.sendDirect) {
   const box = getComposer()
   if (!box) { toast("Abra uma conversa pra usar esta resposta."); return }
   const targetPhone = state.phone
   if (r.type === "AUDIO" && r.asVoiceNote) {
     const key = `${r.id}:${targetPhone}`
+    lastQuickKey = key
     if (!quickSendRequests.has(key)) quickSendRequests.set(key, crypto.randomUUID())
-    const result = await api("POST", `/api/crm/quick-replies/${r.id}/send`, { phone: targetPhone, requestId: quickSendRequests.get(key), approved: !!prefs.sendDirect })
-    if (result.status) quickSendRequests.delete(key)
-    if (!result.ok) { toast(result.data?.error || "Nota de voz exige conector no servidor conectado e destinatário autorizado."); return false }
-    toast(prefs.sendDirect ? "Nota de voz na fila do servidor. Confira o status em Envios no servidor." : "Nota de voz preparada para aprovação em Envios no servidor."); return !!prefs.sendDirect
+    const result = await api("POST", `/api/crm/quick-replies/${r.id}/send`, { phone: targetPhone, requestId: quickSendRequests.get(key), approved: !!direct })
+
+    if (!result.ok) { sendState(result.status ? "failed" : "uncertain", result.status ? "O servidor recusou a preparação. Confira o conector e o destinatário autorizado." : "A conexão caiu. Confira a fila do servidor antes de repetir."); toast(result.data?.error || "Nota de voz exige conector no servidor conectado e destinatário autorizado."); return false }
+    sendState(SEND_LABELS[result.data?.status] ? result.data.status : (direct ? "queued" : "review"), "A nota de voz usa o conector. Acompanhe em Envios no servidor; o lembrete continua aberto.", result.data?.id || null)
+    toast("Nota de voz preparada no servidor. Acompanhe o estado na fila.")
+    // A queued request is not a confirmed browser send; do not complete a reminder or continue a sequence.
+    return false
   }
   toast("Carregando o arquivo…")
   const res = await fileApi(`/api/crm/quick-replies/${r.id}/file`)
@@ -1224,16 +1282,18 @@ async function attachFile(r) {
   api("POST", `/api/crm/quick-replies/${r.id}/use`)
   // legenda: o WhatsApp abre a pré-visualização com o foco na legenda
   const caption = r.type === "AUDIO" || !r.text ? "" : renderVariables(r.text)
-  if (prefs.sendDirect) {
+  if (direct) {
     // espera a pré-visualização abrir, escreve a legenda e envia (igual ao Hotzapp)
     await new Promise((res) => later(res, 1200))
     if (caption) { const editor = document.querySelector('[role="dialog"] [contenteditable="true"]'); if (!editor) { toast("Confira a prévia e escreva a legenda antes de enviar."); return false } editor.focus(); try { document.execCommand("insertText", false, caption) } catch {} await new Promise((res) => later(res, 300)) }
     if (extensionLife.expired || state.phone !== targetPhone) return false
-    const sent = await clickSend(5000, true)
+    const sent = await clickSend(5000, true, targetPhone)
     toast(sent ? "Envio solicitado ao WhatsApp." : "Arquivo preparado. Confira e envie; a sequência não continuará sozinha.")
+    sendState(sent ? "requested" : "uncertain", sent ? "Envio solicitado. Confira a conversa para confirmar o resultado." : "Confira a prévia e a conversa antes de repetir o envio.")
     return sent
   }
   if (caption) later(() => { const editor = document.querySelector('[role="dialog"] [contenteditable="true"]'); if (editor && state.phone === targetPhone) { editor.focus(); try { document.execCommand("insertText", false, caption) } catch {} } }, 1200)
+  sendState("prepared", "Arquivo anexado. Revise a prévia e envie pelo WhatsApp.")
   toast(r.type === "AUDIO" ? "Áudio colocado. Confira e envie." : "Arquivo colocado. Confira a legenda e envie.")
 }
 
@@ -1494,7 +1554,7 @@ function renderHdrPop() {
   if (hdrPop === "sched") {
     html = `<b>Agendar conversa / mensagem</b>
       <input id="vh-text" maxlength="300" placeholder="Lembrete (opcional). Ex.: cobrar o pacote" />
-      <textarea id="vh-msg" rows="2" maxlength="2000" placeholder="Mensagem pronta para enviar no horário (opcional)…"></textarea>
+      <textarea id="vh-msg" rows="2" maxlength="2000" placeholder="Mensagem para revisar no horário (opcional)…"></textarea>
       ${mediaPicker("vh-media")}
       <div class="vh-chips">${schedPresets().map(([l, d]) => `<button data-sched="${d.toISOString()}">${esc(l)}</button>`).join("")}</div>
       <form data-hform="sched">
@@ -1649,21 +1709,16 @@ function findSendButton() {
 }
 
 /** Clica em enviar assim que o botão existir (espera até `timeoutMs`). Sem botão, tenta o Enter no campo. */
-async function clickSend(timeoutMs = 1500, mediaOnly = false) {
+async function clickSend(timeoutMs = 1500, mediaOnly = false, expectedPhone = state.phone) {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
     if (extensionLife.expired) return false
     const b = mediaOnly ? document.querySelector('[role="dialog"] [data-icon="send"], [role="dialog"] [data-icon="wds-ic-send-filled"], [data-testid="media-send"]')?.closest('button, [role="button"]') : findSendButton()
-    if (b) { b.click(); return true }
+    if (b) { if (expectedPhone && (await resolveChat()).phone !== expectedPhone) return false; if (extensionLife.expired) return false; b.click(); return true }
     await new Promise((r) => later(r, 120))
   }
   if (mediaOnly) return false
-  const box = getComposer()
-  if (!box) return false
-  box.focus()
-  for (const type of ["keydown", "keypress", "keyup"]) {
-    box.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }))
-  }
+
   return false
 }
 
@@ -1699,6 +1754,7 @@ function ensureBar() {
     return `<button class="vb-chip t-${r.type}${prefs.chipStyle === "color" ? " tinted" : ""}" data-bar-reply="${esc(r.id)}" title="${esc(replyPreview(r))}"${tint}><i class="vb-ic">${icon(r.favorite ? "star" : BAR_ICON[r.type] || "text", 13)}</i><span>${esc(r.name)}</span></button>`
   }).join("")
   const html =
+    `<button class="vb-mode" data-bar="mode" title="Alternar modo de envio" aria-label="Modo atual: ${prefs.sendDirect ? "Enviar agora" : "Preparar para revisão"}">${prefs.sendDirect ? "Enviar agora" : "Revisar"}</button>` +
     `<button class="vb-filter${prefs.barCat ? " on" : ""}" data-bar="filter" title="Filtrar por categoria">${icon("filter", 15)}</button>` +
     `<button class="vb-min" data-bar="min" title="${prefs.barMin ? "Mostrar respostas" : "Recolher"}">${prefs.barMin ? icon("plus", 13) : "−"}</button>` +
     (prefs.barMin ? "" : `<div class="vb-chips">${chips || '<span class="vb-none">Nenhuma resposta nesta categoria.</span>'}</div><button class="vb-next" data-bar="next" title="Mais">${icon("chevronright", 14)}</button>`)
@@ -1722,9 +1778,9 @@ function openBarMenu(anchor) {
   m.id = "vcrm-barmenu"
   m.innerHTML = `<b>Mostrar na barra</b>
     <button data-cat="" class="${!prefs.barCat ? "on" : ""}">Todas</button>
-    ${cats.map((c) => `<button data-cat="${esc(c)}" class="${prefs.barCat === c ? "on" : ""}"><i style="background:hsl(${catHue(c)} 60% 55%)"></i>${esc(c)}</button>`).join("")}
+    ${cats.map((c) => `<button data-cat="${esc(c)}" class="${prefs.barCat === c ? "on" : ""}"><i style="background:${esc(state.replies.find(reply => catName(reply) === c)?.categoryColor || `hsl(${catHue(c)} 60% 55%)`)}"></i>${esc(c)}</button>`).join("")}
     <div class="vm-sep"></div>
-    <label class="vm-toggle"><input type="checkbox" data-pref="sendDirect" ${prefs.sendDirect ? "checked" : ""}/> <span>Mensagem sai direto</span></label>
+    <label class="vm-toggle"><input type="checkbox" data-pref="sendDirect" ${prefs.sendDirect ? "checked" : ""}/> <span>Enviar agora ao clicar</span></label>
     <div class="vm-seg"><button data-style="icon" class="${prefs.chipStyle === "icon" ? "on" : ""}">Ícone</button><button data-style="color" class="${prefs.chipStyle === "color" ? "on" : ""}">Colorido</button></div>`
   m.addEventListener("mousedown", (e) => { if (e.target.tagName !== "INPUT") e.preventDefault() })
   m.addEventListener("click", (e) => {
@@ -1754,6 +1810,7 @@ function onBarClick(e) {
   const b = e.target.closest("[data-bar]")
   if (!b) return
   const k = b.dataset.bar
+  if (k === "mode") { prefs.sendDirect = !prefs.sendDirect; savePrefs(); ensureBar(); if (state.open) render(); return }
   if (k === "min") { prefs.barMin = !prefs.barMin; savePrefs(); return ensureBar() }
   if (k === "next") { const c = document.querySelector("#vcrm-bar .vb-chips"); if (c) c.scrollBy({ left: 320, behavior: "smooth" }); return }
   if (k === "filter") { return document.getElementById("vcrm-barmenu") ? closeBarMenu() : openBarMenu(b) }
@@ -1915,6 +1972,13 @@ async function onClick(e) {
     return render()
   }
   const act = t.dataset.act
+  if (act === "new-server-send") {
+    if (replyBusy || !lastQuickKey) return
+    if (!confirm("Confira a conversa e a fila antes de continuar. Preparar outro envio permite enviar a mesma nota de voz novamente. Deseja continuar?")) return
+    quickSendRequests.delete(lastQuickKey); lastQuickKey = null; sendState("idle"); return
+  }
+  if (act === "send-status") return refreshSendStatus()
+  if (act === "server-queue") { if (state.apiUrl) window.open(state.apiUrl + "/dashboard/whatsapp", "_blank", "noopener,noreferrer"); return }
   if (act === "close") { state.open = false; return render() }
   if (act === "diag") {
     const text = collectDiagnostic()
@@ -2122,6 +2186,7 @@ function onInput(e) {
   if (e.target.matches("[data-pref]")) {
     prefs[e.target.getAttribute("data-pref")] = e.target.checked
     savePrefs()
+    ensureBar(); if (state.tab === "respostas" && state.open) render()
     return
   }
   if (e.target.matches("[data-imp-label]")) {
@@ -2166,7 +2231,7 @@ async function loadShared() {
     api("GET", "/api/crm/me"),
   ])
   if (lists.ok && Array.isArray(lists.data)) state.lists = lists.data
-  if (replies.ok && Array.isArray(replies.data)) state.replies = replies.data
+  if (replies.ok && Array.isArray(replies.data)) { state.replies = replies.data; state.lastSyncAt = new Date().toISOString() }
   if (me.ok && me.data) state.myName = me.data.name || ""
 }
 
@@ -2677,6 +2742,7 @@ async function sendScheduledReminder(reminder) {
   try {
     const current = await resolveChat()
     if (current.phone !== (reminder.contactPhone || state.phone)) { toast("Abra a conversa correta antes de enviar o agendamento."); return false }
+    sendState("preparing", "Prévia do lembrete em preparação.", null, current.phone)
     if (reminder.scheduledReplyId) {
       const response = await api("GET", "/api/crm/quick-replies")
       const reply = response.ok && response.data?.find(r => r.id === reminder.scheduledReplyId && ["AUDIO", "IMAGE"].includes(r.type))
@@ -2684,10 +2750,12 @@ async function sendScheduledReminder(reminder) {
       return await useReply({ ...reply, ...(reply.type === "IMAGE" && reminder.scheduledMessage ? { text: reminder.scheduledMessage } : {}) })
     }
     if (!reminder.scheduledMessage || !insertIntoComposer(renderVariables(reminder.scheduledMessage))) return false
-    if (!prefs.sendDirect) { toast("Mensagem preparada. Revise e envie; conclua o lembrete depois."); return false }
+    if (!prefs.sendDirect) { sendState("prepared", "Revise e envie pelo WhatsApp; o lembrete continua aberto."); toast("Mensagem preparada. Revise e envie; conclua o lembrete depois."); return false }
     await new Promise(resolve => later(resolve, 160))
     if (extensionLife.expired || (await resolveChat()).phone !== current.phone) return false
-    return await clickSend(1800)
+    const requested = await clickSend(1800, false, current.phone)
+    sendState(requested ? "requested" : "uncertain", "Confira a conversa para confirmar o resultado.")
+    return requested
   } finally { sendingReminders.delete(reminder.id) }
 }
 
@@ -2715,7 +2783,7 @@ function checkDueReminders() {
       </div>
     </div>
     <div class="vdue-acts">
-      <button class="vc-btn sm" data-due-go="${esc(due.id)}">${icon("send", 13)} ${due.scheduledMessage || due.scheduledReplyId ? "Abrir e Enviar" : "Abrir conversa"}</button>
+      <button class="vc-btn sm" data-due-go="${esc(due.id)}">${icon("send", 13)} ${due.scheduledMessage || due.scheduledReplyId ? (prefs.sendDirect ? "Abrir e solicitar envio" : "Abrir e revisar") : "Abrir conversa"}</button>
       <button class="vc-ghost" data-due-dismiss="${esc(due.id)}">Depois</button>
     </div>
   `
@@ -2795,7 +2863,18 @@ function init() {
   later(() => { checkWaiting(); refreshInboxData(true) }, 4000)
   repeat(checkWaiting, 5000) // lê só a memória do WhatsApp: é leve, e mantém a lista em tempo real
   repeat(() => refreshInboxData(false), 25000)
-  chrome.runtime.onMessage?.addListener(message => { if (message?.type === "theme") applyPluginTheme(message.theme) })
+  chrome.runtime.onMessage?.addListener((message, sender, respond) => {
+    if (sender.id !== chrome.runtime.id || extensionLife.expired) return false
+    if (message?.type === "theme") applyPluginTheme(message.theme)
+    if (message?.type === "connection-probe") {
+      askBridge("chat", 1500).then(bridge => respond({ protocol: 1, version: SCRIPT_VERSION, main: !!document.querySelector("#main"), composer: !!getComposer(), bridge: !!bridge, expired: extensionLife.expired, lastSyncAt: state.lastSyncAt || null })).catch(() => respond({ protocol: 1, version: SCRIPT_VERSION, expired: true }))
+      return true
+    }
+    return false
+  })
+  listenGlobal(window, "focus", () => { if (state.apiUrl) void syncReplyLibrary() })
+  repeat(() => { if (state.apiUrl) void syncReplyLibrary() }, 60000)
+  repeat(() => { if (!document.hidden) void refreshSendStatus() }, 15000)
   repeat(() => { try { if (!chrome.runtime.id) invalidateExtension() } catch (error) { handleExtensionError(error) } }, 2000)
 }
 

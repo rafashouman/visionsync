@@ -3,18 +3,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
+import { passwordPairSchema } from "@/lib/password-policy"
 import { Prisma } from "@prisma/client"
 
 const schema = z.object({
   name: z.string().trim().min(2).max(100),
   email: z.string().trim().max(254).email().transform(v => v.toLowerCase()),
-  password: z.string().min(10).max(72).refine(value => Buffer.byteLength(value, "utf8") <= 72, "Senha deve ter no máximo 72 bytes."),
-})
+}).and(passwordPairSchema)
 
 export async function POST(req: NextRequest) {
   if (!await allowAuthAttempt("register:global", 30, 60_000)) return NextResponse.json({ error: "Muitas tentativas. Aguarde um minuto." }, { status: 429, headers: { "Retry-After": "60" } })
   const parsed = schema.safeParse(await req.json().catch(() => null))
-  if (!parsed.success) return NextResponse.json({ error: "Confira nome, email e senha (mínimo de 10 caracteres)." }, { status: 400 })
+  if (!parsed.success) return NextResponse.json({ error: "Confira nome, email e senha (mínimo de 8 caracteres)." }, { status: 400 })
   try {
     const { name, email, password } = parsed.data
     if (!await allowAuthAttempt(`register:${email}`, 5, 3_600_000)) return NextResponse.json({ error: "Muitas tentativas para este email. Tente mais tarde." }, { status: 429, headers: { "Retry-After": "3600" } })

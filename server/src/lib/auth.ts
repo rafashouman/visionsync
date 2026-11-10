@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
+  trustHost: true,
   pages: { signIn: "/login" },
   providers: [
     Credentials({
@@ -31,7 +32,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      if (user) token.id = user.id
+      if (user) { token.id = user.id; token.authenticatedAt = Date.now() }
+      else if (token.id) {
+        const account = await prisma.user.findUnique({ where: { id: String(token.id) }, select: { passwordChangedAt: true } })
+        if (!account || (account.passwordChangedAt && account.passwordChangedAt.getTime() > Number(token.authenticatedAt || 0))) return null
+      }
       return token
     },
     async session({ session, token }) {

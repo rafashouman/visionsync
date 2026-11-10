@@ -7,7 +7,7 @@ export default function ExtensionPage() {
   return <div className="vs-stack">
     <PageHeader title="Seu CRM, dentro da conversa" subtitle="Conecte o plugin do Chrome ao WhatsApp Web e cuide do atendimento sem perder o contexto." />
     <section className="vs-plugin-hero">
-      <div><span className="vs-eyebrow">PLUGIN WHATSAPP</span><h2>Mais contexto.<br />Menos troca de telas.</h2><p>Contatos, notas, cobranças, lembretes e respostas rápidas ao lado de cada conversa.</p><a href="/visionsync-extension.zip" className="vs-primary"><Download size={18} /> Baixar plugin para Chrome</a><small>Versão 0.17.0 · Instalação manual no Chrome desktop</small></div>
+      <div><span className="vs-eyebrow">PLUGIN WHATSAPP</span><h2>Mais contexto.<br />Menos troca de telas.</h2><p>Contatos, notas, cobranças, lembretes e respostas rápidas ao lado de cada conversa.</p><a href="/visionsync-extension.zip" className="vs-primary"><Download size={18} /> Baixar plugin para Chrome</a><small>Versão 0.22.0 · Instalação manual no Chrome desktop</small></div>
       <ExtensionPreview />
     </section>
     <section className="vs-install-grid">
