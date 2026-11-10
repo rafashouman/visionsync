@@ -17,6 +17,7 @@ async function request(body?: unknown) {
   return data
 }
 
+
 export function WhatsappPilot() {
   const [view, setView] = useState<View | null>(null)
   const [config, setConfig] = useState<PilotConfig>(defaults)
