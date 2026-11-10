@@ -15,7 +15,7 @@ const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
 const PANEL_W = 340
 const RAIL_W = 44
-const SCRIPT_VERSION = "0.20.4"
+const SCRIPT_VERSION = "0.20.5"
 
 const state = {
   open: false,
@@ -1628,7 +1628,7 @@ const BAR_ICON = { TEXT: "text", CONTACT: "user", AUDIO: "mic", IMAGE: "image", 
 // ── Preferências da barra (como a engrenagem do Hotzapp) ──
 const prefs = { sendDirect: true, chipStyle: "icon", barMin: false, barCat: null, compact: false, collapsed: {}, blur: false, theme: "dark" }
 function pluginBrand() {
-  return '<img class="vc-brand-on-dark" src="' + chrome.runtime.getURL('brand/logo-small-wh.png') + '" alt="" /><img class="vc-brand-on-light" src="' + chrome.runtime.getURL('brand/logo-small-dark.png') + '" alt="" />'
+  return '<img src="' + chrome.runtime.getURL('brand/icon.png') + '" alt="" />'
 }
 function applyPluginTheme(theme) {
   prefs.theme = ["light", "minimal"].includes(theme) ? theme : "dark"

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { AuthBackground } from "@/components/auth-background"
 import { BrandLogo } from "@/components/brand-logo"
 import { ThemePicker } from "@/components/theme-picker"
 import { PasswordInput } from "@/components/password-input"
@@ -57,7 +58,7 @@ export default function CadastroPage() {
   }
 
   return (
-    <div className="auth-bg">
+    <AuthBackground>
       <form onSubmit={handleSubmit} className="auth-card">
         <h1 className="auth-title"><BrandLogo size="big" /></h1>
         <p className="auth-sub">Crie sua conta</p>
@@ -77,6 +78,6 @@ export default function CadastroPage() {
         </p>
         <details className="vs-auth-appearance"><summary>Aparência</summary><ThemePicker compact /></details>
       </form>
-    </div>
+    </AuthBackground>
   )
 }

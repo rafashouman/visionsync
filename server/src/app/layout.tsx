@@ -7,6 +7,7 @@ import { AuthProvider } from "@/components/session-provider"
 
 export const metadata: Metadata = {
   title: "VisionSync",
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/brand/icon.png", type: "image/png", sizes: "150x150" }], apple: "/brand/apple-touch-icon.png" },
   description: "Relacionamentos, oportunidades e vendas conectados ao WhatsApp.",
 }
 
