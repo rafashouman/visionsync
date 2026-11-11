@@ -1,16 +1,17 @@
-import { test } from "node:test"
+import { mock, test } from "node:test"
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import path from "node:path"
 import { MongoMemoryReplSet } from "mongodb-memory-server"
 import { ensureIndexes } from "../scripts/indexes"
+import nodemailer from "nodemailer"
 
 test("MongoDB: existing CRM relations, identities, transactions and idempotent sales", { timeout: 240_000 }, async t => {
   const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ launchTimeout: 60_000 }] })
   process.env.DATABASE_URL = mongo.getUri("visionsync_test")
   process.env.NEXTAUTH_SECRET = "test-only-secret-for-isolated-integration-test"
-  process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
+  process.env.ALLOWED_USER_EMAILS = "unrelated@example.test"
   const { prisma } = await import("../src/lib/prisma")
   try {
     await promisify(execFile)(process.execPath, [path.resolve("../node_modules/prisma/build/index.js"), "db", "push", "--skip-generate"], { cwd: process.cwd(), env: process.env, timeout: 60_000 })
@@ -70,9 +71,6 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       const req=new NextRequest("http://localhost/api/crm/me",{headers:{Authorization:`Bearer ${token}`}})
       await prisma.user.update({where:{id:user.id},data:{apiTokenHash:hashApiToken(token),apiTokenExpiresAt:new Date(Date.now()+60000)}})
       assert.equal((await getUserFromToken(req))?.id,user.id)
-      process.env.ALLOWED_USER_EMAILS = "other@example.test,new@example.test"
-      assert.equal(await getUserFromToken(req), null)
-      process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
       await prisma.user.update({where:{id:user.id},data:{apiTokenHash:null,apiTokenExpiresAt:null}})
       assert.equal(await getUserFromToken(req),null)
     })
@@ -176,19 +174,23 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       }))
       const invalid = await register({ name: "  ", email: "new@example.test" })
       assert.equal(invalid.status, 400)
-      assert.equal((await register({ name: "Outro", email: "notallowed@example.test" })).status, 403)
-      process.env.RESEND_API_KEY = "test-only"
-      process.env.AUTH_EMAIL_FROM = "VisionSync <test@example.test>"
+      Object.assign(process.env, { SMTP_HOST: "smtp.example.test", SMTP_PORT: "587", SMTP_USER: "sender@example.test", SMTP_PASSWORD: "test-only", SMTP_FROM: "sender@example.test" })
       process.env.AUTH_URL = "http://localhost:3001"
-      const originalFetch = globalThis.fetch
       let activationLink = ""
-      globalThis.fetch = async (_input, init) => {
-        const body = JSON.parse(String(init?.body)) as { text: string }
-        activationLink = body.text.match(/http:\/\/\S+/)?.[0] ?? ""
-        return new Response("{}", { status: 200 })
-      }
+      let failDelivery = false
+      const createTransport = nodemailer.createTransport
+      const smtp = mock.method(nodemailer, "createTransport", () => createTransport({
+        name: "test", version: "1",
+        send(mail, callback) {
+          if (failDelivery) return callback(new Error("delivery failed"), { envelope: mail.message.getEnvelope(), messageId: "test", accepted: [], rejected: [], pending: [], response: "" })
+          assert.equal(typeof mail.data.text, "string")
+          activationLink = String(mail.data.text).match(/http:\/\/\S+/)?.[0] ?? ""
+          callback(null, { envelope: mail.message.getEnvelope(), messageId: "test", accepted: ["new@example.test"], rejected: [], pending: [], response: "OK" })
+        },
+      }))
       let account: NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>
       try {
+        delete process.env.ALLOWED_USER_EMAILS
         const created = await register({ name: " Nova Empresa ", email: " New@Example.Test ", password: "attackerpass" })
         assert.equal(created.status, 201)
         account = await prisma.user.findUniqueOrThrow({ where: { email: "new@example.test" } })
@@ -196,12 +198,39 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
         const token = new URL(activationLink).searchParams.get("token")
         assert.ok(token)
         const { resetPassword } = await import("../src/lib/password-reset")
-        process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,minor@example.test"
-        assert.equal(await resetPassword(token, "legitimatepass"), false)
-        process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
+        process.env.ALLOWED_USER_EMAILS = "unrelated@example.test"
         assert.equal(await resetPassword(token, "legitimatepass"), true)
         assert.equal(await resetPassword(token, "attackerpass"), false)
-      } finally { globalThis.fetch = originalFetch }
+        const { handlers } = await import("../src/lib/auth")
+        const baseUrl = "http://localhost:3001"
+        const csrf = await handlers.GET(new NextRequest(`${baseUrl}/api/auth/csrf`))
+        const { csrfToken } = await csrf.json()
+        const csrfCookie = csrf.headers.getSetCookie().map(value => value.split(";")[0]).join("; ")
+        const login = await handlers.POST(new NextRequest(`${baseUrl}/api/auth/callback/credentials`, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded", cookie: csrfCookie },
+          body: new URLSearchParams({ email: "new@example.test", password: "legitimatepass", csrfToken, callbackUrl: baseUrl }),
+        }))
+        const sessionCookie = login.headers.getSetCookie().find(value => value.startsWith("authjs.session-token="))
+        assert.ok(sessionCookie)
+        const session = await handlers.GET(new NextRequest(`${baseUrl}/api/auth/session`, { headers: { cookie: sessionCookie.split(";")[0] } }))
+        assert.equal((await session.json()).user.email, "new@example.test")
+        const { POST: forgotPassword } = await import("../src/app/api/auth/forgot-password/route")
+        const recover = () => forgotPassword(new NextRequest("http://localhost:3001/api/auth/forgot-password", {
+          method: "POST", headers: { "Content-Type": "application/json", origin: "http://localhost:3001" }, body: JSON.stringify({ email: "new@example.test" }),
+        }))
+        activationLink = ""
+        assert.equal((await recover()).status, 200)
+        assert.ok(new URL(activationLink).searchParams.get("token"))
+        const resetCount = await prisma.passwordReset.count({ where: { userId: account.id } })
+        failDelivery = true
+        assert.equal((await recover()).status, 200)
+        assert.equal(await prisma.passwordReset.count({ where: { userId: account.id } }), resetCount)
+        assert.equal((await register({ name: "Falha", email: "minor@example.test" })).status, 500)
+        const failedUser = await prisma.user.findUniqueOrThrow({ where: { email: "minor@example.test" } })
+        assert.equal(await prisma.passwordReset.count({ where: { userId: failedUser.id } }), 0)
+        await prisma.user.delete({ where: { id: failedUser.id } })
+      } finally { smtp.mock.restore() }
       assert.equal(account.name, "Nova Empresa")
       assert.equal(account.email, "new@example.test")
       assert.equal((await register({ name: "Outra", email: "new@example.test" })).status, 409)

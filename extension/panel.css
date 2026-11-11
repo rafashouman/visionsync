@@ -22,16 +22,18 @@ html[data-vcrm-theme="minimal"] { --v-bg:#f3f5f8; --v-card:#ffffff; --v-field:#e
 }
 #vcrm-root *, #vcrm-bar *, #vcrm-pop * { box-sizing: border-box; font-family: inherit; }
 
-/* Empurra o WhatsApp pra esquerda: nada fica escondido atrás da coluna */
-html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background: var(--v-bg); }
+/* Reserva espaço para a coluna e, em telas largas, para o painel. */
+html.vcrm-on { --vcrm-panel-width: min(340px, calc(100vw - 44px)); }
+html.vcrm-on body { padding-left: var(--vcrm-pad, 44px) !important; background: var(--v-bg); }
 
 /* ── Coluna de ícones ── */
 .vc-rail {
-  position: fixed; top: 0; right: 0; bottom: 0; width: 56px; z-index: 2147483000;
+  position: fixed; top: 0; left: 0; bottom: 0; width: 56px; z-index: 2147483000;
   display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0;
   background: linear-gradient(180deg, var(--v-card), var(--v-bg));
-  border-left: 1px solid var(--line);
-  box-shadow: -4px 0 24px var(--v-accent-soft);
+  border-right: 1px solid var(--line);
+  box-shadow: 4px 0 24px var(--v-accent-soft);
+  overflow-y: auto;
 }
 .vc-logo { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--accent); color: var(--v-text); box-shadow: 0 0 16px var(--glow); margin-bottom: 8px; }
 .vc-grow { flex: 1; }
@@ -48,7 +50,7 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 
 /* ── Painel ── */
 .vc-panel {
-  position: fixed; top: 0; right: 56px; bottom: 0; width: 340px; z-index: 2147482999;
+  position: fixed; top: 0; left: 44px; bottom: 0; width: var(--vcrm-panel-width); z-index: 2147482999;
   display: flex; flex-direction: column;
   background: radial-gradient(500px 260px at 90% -5%, var(--v-accent-soft), transparent 60%), var(--bg);
   border-left: 1px solid var(--soft);
@@ -142,7 +144,7 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 .vc-rtxt span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .vc-fav { color: var(--gold); margin-right: 4px; display: inline-flex; vertical-align: -1px; }
 
-.vc-toast { position: fixed; right: 72px; bottom: 24px; max-width: 320px; z-index: 2147483001; padding: 10px 14px; border-radius: 12px; font-size: 13px; color: var(--v-text); background: var(--v-card); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+.vc-toast { position: fixed; left: 60px; bottom: 24px; max-width: min(320px, calc(100vw - 72px)); z-index: 2147483001; padding: 10px 14px; border-radius: 12px; font-size: 13px; color: var(--v-text); background: var(--v-card); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
 
 /* ── Barra de respostas rápidas acima do campo de mensagem ── */
 #vcrm-bar {
@@ -192,7 +194,7 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 /* ── Aviso: clientes esperam sua resposta ── */
 #vcrm-wait {
   position: fixed; left: 76px; bottom: 28px; width: 340px; z-index: 2147482995; padding: 14px 16px 10px;
-  background: #1f2c34; color: var(--v-text); border-radius: 14px; border: 1px solid var(--v-accent-soft);
+  background: var(--v-card); color: var(--v-text); border-radius: 14px; border: 1px solid var(--v-line);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55), 0 0 22px var(--v-accent-soft); font-family: "Segoe UI", system-ui, sans-serif;
 }
 #vcrm-wait > b { font-size: 16px; color: var(--v-text); }
@@ -243,7 +245,7 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 #vcrm-wait { left: auto; right: calc(var(--vcrm-pad, 56px) + 372px); }
 
 /* Mesmo lugar do aviso do Hotzapp: encostado na coluna de ícones, acima do campo de mensagem */
-#vcrm-wait { left: auto; right: calc(var(--vcrm-pad, 56px) + 4px); bottom: 130px; max-height: calc(100vh - 170px); overflow-y: auto; }
+#vcrm-wait { left: auto; right: 12px; width: min(340px, calc(100vw - 68px)); bottom: 130px; max-height: calc(100vh - 170px); overflow-y: auto; }
 
 /* ── Botões no cabeçalho do chat: agendar, encerrar, funil ── */
 #vcrm-hdr { position: fixed; z-index: 2147482990; display: flex; align-items: center; gap: 8px; height: 34px; font-family: "Segoe UI", system-ui, sans-serif; }
@@ -266,8 +268,8 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 
 /* ═══ Cabeçalho do chat: cópia do desenho do Hotzapp (botões redondos escuros + pílula do funil) ═══ */
 #vcrm-hdr { gap: 8px; height: 36px; }
-#vcrm-hdr button { height: 36px; background: #2a3033; color: var(--v-text-2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; padding: 0; min-width: 36px; font-weight: 500; }
-#vcrm-hdr button:hover { background: #343b3f; color: var(--v-text); }
+#vcrm-hdr button { height: 36px; background: var(--v-card); color: var(--v-text-2); border: 1px solid var(--v-line); border-radius: 999px; padding: 0; min-width: 36px; font-weight: 500; }
+#vcrm-hdr button:hover { background: var(--v-hover); color: var(--v-text); }
 #vcrm-hdr .vh-round { width: 36px; }
 #vcrm-hdr .vh-pill { gap: 7px; padding: 0 13px; border: 1px dashed rgba(255, 255, 255, 0.35); background: var(--v-card); color: var(--v-text); }
 #vcrm-hdr .vh-pill.on { border: 1px solid var(--v-teal); background: var(--v-card); }
@@ -323,17 +325,17 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 56px) !important; background:
 #vcrm-barmenu .vm-seg button.on { background: var(--v-teal); color: var(--v-text); border-color: var(--v-teal); }
 #vcrm-bar .vb-ic svg { color: inherit; }
 
-/* ═══ Coluna da direita: fina e só com ícones (como a do Hotzapp) ═══ */
-html.vcrm-on body { padding-right: var(--vcrm-pad, 44px) !important; }
+/* ═══ Coluna da esquerda: fina e só com ícones ═══ */
 .vc-rail { width: 44px; padding: 8px 0; gap: 2px; }
 .vc-logo { width: 28px; height: 28px; border-radius: 9px; margin-bottom: 6px; }
 .vc-logo svg { width: 16px; height: 16px; }
-.vc-ico { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 10px; }
+.vc-ico { position: relative; flex-shrink: 0; width: 36px; height: 36px; padding: 0; justify-content: center; border-radius: 10px; }
 .vc-ico span { display: none; }
 .vc-sep { width: 22px; height: 1px; margin: 6px 0; background: rgba(255, 255, 255, 0.14); }
 .vc-badge-n { position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 10px; line-height: 15px; font-weight: 700; text-align: center; color: var(--v-text); background: var(--v-accent); }
-.vc-panel { right: 44px; }
-.vc-toast { right: 60px; }
+@media (max-width: 700px) {
+  html.vcrm-on body { padding-left: 44px !important; }
+}
 
 /* ═══ Painel de Respostas rápidas (cópia do Hotzapp) ═══ */
 .rp-top { display: flex; gap: 8px; align-items: center; }
@@ -420,11 +422,12 @@ html.vcrm-on body { padding-right: var(--vcrm-pad, 44px) !important; }
 #vcrm-hpop textarea#vh-msg { width: 100%; box-sizing: border-box; margin-bottom: 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 9px; padding: 8px 10px; color: var(--v-text); font: inherit; font-size: 12px; resize: vertical; outline: none; }
 
 /* ═══ HotZapp: Abas de Filtro acima da lista de conversas (#pane-side) ═══ */
-#vcrm-inbox-tabs { display: flex; flex-direction: column; gap: 6px; padding: 6px 10px; background: var(--v-bg); border-bottom: 1px solid rgba(255, 255, 255, 0.08); font-family: "Segoe UI", system-ui, sans-serif; }
-#vcrm-inbox-tabs .vib-row, #vcrm-inbox-tabs .vib-stages { display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+#vcrm-inbox-tabs { position: fixed; z-index: 2147483001; top: 64px; left: 50px; width: min(320px, calc(100vw - 58px)); display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--v-card); border: 1px solid var(--v-line); border-radius: 12px; box-shadow: 0 8px 24px #0005; font-family: "Segoe UI", system-ui, sans-serif; }
+#vcrm-inbox-tabs[hidden] { display: none; }
+#vcrm-inbox-tabs .vib-row, #vcrm-inbox-tabs .vib-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; max-height: 35vh; overflow-y: auto; }
 #vcrm-inbox-tabs .vib-row::-webkit-scrollbar, #vcrm-inbox-tabs .vib-stages::-webkit-scrollbar { display: none; }
-#vcrm-inbox-tabs button { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.04); color: var(--v-muted); font-size: 11.5px; font-weight: 600; cursor: pointer; }
-#vcrm-inbox-tabs button:hover { background: rgba(255, 255, 255, 0.1); color: var(--v-text); }
+#vcrm-inbox-tabs button { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--v-line); background: var(--v-field); color: var(--v-text-2); font-size: 11.5px; font-weight: 600; cursor: pointer; }
+#vcrm-inbox-tabs button:hover { background: var(--v-hover); color: var(--v-text); }
 #vcrm-inbox-tabs button.on { background: var(--v-accent-soft); border-color: var(--v-teal); color: var(--v-text-2); }
 #vcrm-inbox-tabs button b { padding: 0 5px; border-radius: 999px; background: #10b981; color: #052e16; font-size: 10px; font-weight: 800; }
 #vcrm-inbox-tabs button b.amber { background: var(--v-gold); color: #451a03; }
@@ -517,6 +520,10 @@ html.vcrm-blur #vcrm-root .vc-stats:hover b {
 #vcrm-root .vc-panel, #vcrm-hpop { background:var(--v-bg); border-color:var(--v-line); }
 #vcrm-root .vc-card, #vcrm-root .rp-card { background:var(--v-card); border-color:var(--v-line); }
 #vcrm-root input, #vcrm-root textarea, #vcrm-root select, #vcrm-hpop input, #vcrm-hpop textarea, #vcrm-hpop select { color:var(--v-text); background:var(--v-field); border-color:var(--v-line); }
+#vcrm-root [data-theme-select] { width:100%; padding:9px 10px; border:1px solid var(--v-line); border-radius:9px; font:inherit; }
+#vcrm-hpop { box-sizing:border-box; max-width:calc(100vw - 58px); max-height:calc(100vh - 16px); overflow-y:auto; }
+#vcrm-wait .vw-time.late { color:var(--v-danger); }
+html:is([data-vcrm-theme="light"],[data-vcrm-theme="minimal"]) :is(#vcrm-root input, #vcrm-hpop input) { color-scheme:light; }
 #vcrm-root .vc-btn, #vcrm-hpop .vc-btn { background:var(--v-accent); color:var(--v-on-accent); }
 #vcrm-root .vc-head, #vcrm-root .vc-rail { background:var(--v-card); }
 #vcrm-root .vc-version { color:var(--v-muted); font-size:10px; margin-left:auto; margin-right:8px; }

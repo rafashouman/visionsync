@@ -1,12 +1,12 @@
 # Envios de WhatsApp no servidor
 
-O acesso é limitado por usuário no ambiente privado; não há lista de destinatários. A vinculação por QR e envio/entrega em contas reais exigem teste acompanhado. Não houve deploy na VPS.
+Cada usuário acessa apenas seus próprios dados; não há lista de destinatários. A vinculação por QR e envio/entrega em contas reais exigem teste acompanhado. Não houve deploy na VPS.
 
 ## Abrir e conectar
 
 1. Inicie o CRM normalmente. No diretório raiz, execute `npm run whatsapp:worker` em outro processo persistente.
 2. Entre no CRM e abra **Mensagens → Envios no servidor**, em `/dashboard/whatsapp`.
-3. Configure `ALLOWED_USER_EMAILS` no aplicativo e no worker, conforme [Acesso e recuperação](acesso-e-recuperacao.md). Cadastre os destinatários em Contatos.
+3. Cadastre os destinatários em Contatos.
 4. Clique em **Conectar / gerar QR**. A solicitação também pode ser feita com o worker desligado; o QR aparece quando ele for iniciado.
 5. No WhatsApp remetente, acesse aparelhos conectados e escaneie o QR privado da tela. A vinculação pode solicitar um novo QR caso expire.
 6. Aguarde o estado conectado. O worker espera o processamento inicial das notificações antes de liberar transmissão.

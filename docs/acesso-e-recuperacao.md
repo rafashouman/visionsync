@@ -8,32 +8,33 @@ Abra `http://localhost:3001`. Para acesso pela rede, `192.168.0.2` está autoriz
 
 ## Produção
 
-Defina `ALLOWED_USER_EMAILS` no ambiente privado com os emails autorizados, separados por vírgula, por exemplo `ALLOWED_USER_EMAILS="pessoa1@empresa.com,pessoa2@empresa.com"`. A lista vazia bloqueia login, cadastro e extensão. Configure o mesmo valor no aplicativo e no worker WhatsApp e reinicie ambos ao alterar a lista. A remoção invalida sessões e tokens nas próximas requisições e o worker deixa de operar a conta; não desfaz um envio já iniciado. Cada usuário mantém dados separados: não há carteira compartilhada de equipe.
-
-Novos usuários informam nome e email na tela de cadastro e recebem um link para definir sua própria senha. O cadastro não aceita senha fornecida antes da confirmação do email. Contas já existentes continuam com suas senhas; inclua seus emails na lista antes de reiniciar.
+O cadastro é público: novos usuários informam nome e email e recebem um link para definir sua própria senha. O cadastro não aceita senha fornecida antes da confirmação do email. Contas já existentes continuam com suas senhas. Cada usuário mantém dados separados: não há carteira compartilhada de equipe. A variável antiga `ALLOWED_USER_EMAILS` não é mais utilizada.
 
 Configure `AUTH_URL` e `NEXTAUTH_URL` com `https://visionsync.nexusync.online`. Mantenha os secrets existentes. A proteção de origem das operações do WhatsApp usa essa URL pública, em vez da URL interna HTTP vista pelo Next.js atrás do proxy. O proxy deve sobrescrever os headers de host encaminhados e restringir o acesso direto ao processo Node.
 
 Depois de instalar dependências, execute `npm run db:generate`, `npm run db:push`, `npm run db:indexes` e `npm run build`, e reinicie o aplicativo pelo gerenciador de processos usado no servidor. A preparação automática de MongoDB em `npm run dev` destina-se ao desenvolvimento; mantenha o banco persistente já configurado em produção.
 
-## Email de recuperação
+## Email de ativação e recuperação
 
 Configure no ambiente do servidor:
 
 ```dotenv
 AUTH_URL="https://visionsync.nexusync.online"
 NEXTAUTH_URL="https://visionsync.nexusync.online"
-RESEND_API_KEY="sua-chave-privada"
-AUTH_EMAIL_FROM="VisionSync <acesso@seu-dominio-verificado.com>"
+SMTP_HOST="smtp.hostinger.com"
+SMTP_PORT="587"
+SMTP_USER="email@seu-dominio.com"
+SMTP_PASSWORD="senha-da-caixa-postal"
+SMTP_FROM="email@seu-dominio.com"
 ```
 
-O domínio remetente deve estar verificado no Resend. Reinicie o processo após configurar. Sem credenciais de envio, a tela informa que a recuperação está indisponível. Não são exibidos links de recuperação nos logs ou respostas da API.
+Use uma caixa postal existente da Hostinger e sua senha SMTP; normalmente o remetente deve ser a própria caixa ou um endereço autorizado pelo provedor. A porta 587 exige STARTTLS; a 465 usa TLS direto. A hospedagem do aplicativo precisa permitir conexões SMTP de saída. As variáveis substituem `RESEND_API_KEY` e `AUTH_EMAIL_FROM` para os dois fluxos. Configure-as no ambiente privado do processo do servidor e reinicie-o; não coloque a senha no código nem a compartilhe. Sem configuração completa, cadastro e recuperação ficam indisponíveis. Não são exibidos links de recuperação nos logs ou respostas da API.
 
 O link expira em 30 minutos e só funciona uma vez. O banco armazena apenas o hash do token. A redefinição exige duas senhas iguais de pelo menos 8 caracteres e invalida as sessões anteriores, os demais links de recuperação e o token do plugin. Após redefinir, entre novamente e gere outro token da extensão em Configurações.
 
 ## Fluxos para conferir após publicar
 
-- Cadastro autorizado deve enviar link por email; sem ele não é possível definir a senha. Sete caracteres devem falhar e oito com confirmação igual devem funcionar. Cadastro de email fora da lista deve falhar.
+- Cadastro deve enviar link por email; sem ele não é possível definir a senha. Sete caracteres devem falhar e oito com confirmação igual devem funcionar.
 - Copiar ou arrastar a primeira senha e colar ou soltar conteúdo na confirmação deve ser bloqueado.
 - Login normal deve abrir a Home; no primeiro acesso, o guia aparece no Painel do dia e pode ser reaberto em Guia de primeiro acesso.
 - Esqueci minha senha deve enviar email para uma conta de teste; um link usado ou expirado não deve permitir nova alteração.

@@ -2,6 +2,18 @@ import { safeServerHealth, safeTabHealth } from "./diagnostics"
 import { allowedAvatarUrl, allowedMessage, allowedUpload, normalizeApiUrl, type ApiMessage, type FileMessage, type UploadMessage } from "./policy"
 
 type Result = { ok: boolean; status: number; error?: string; data?: unknown; base64?: string; mime?: string }
+function preferenceTheme(value: unknown): unknown {
+  return value && typeof value === "object" && "theme" in value ? value.theme : undefined
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.vcrmPrefs) return
+  const previous = preferenceTheme(changes.vcrmPrefs.oldValue)
+  const theme = preferenceTheme(changes.vcrmPrefs.newValue)
+  if (theme === previous || typeof theme !== "string" || !["dark", "light", "minimal"].includes(theme)) return
+  void chrome.tabs.query({ url: "https://web.whatsapp.com/*" }).then(tabs =>
+    Promise.allSettled(tabs.flatMap(tab => tab.id === undefined ? [] : [chrome.tabs.sendMessage(tab.id, { type: "theme", theme })]))
+  ).catch(error => console.error("Não foi possível atualizar o tema nas abas do WhatsApp.", error))
+})
 async function uploadReply(msg: UploadMessage): Promise<Result> {
   const cfg = await chrome.storage.local.get(["apiUrl", "token"])
   if (!cfg.apiUrl || !cfg.token) return { ok: false, status: 0 }

@@ -16,8 +16,6 @@ theme.addEventListener("change", async () => {
     applyTheme(theme.value)
     const cfg = await chrome.storage.local.get("vcrmPrefs")
     await chrome.storage.local.set({ vcrmPrefs: { ...storedPreferences(cfg.vcrmPrefs), theme: theme.value } })
-    const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" })
-    await Promise.allSettled(tabs.filter(t => t.id !== undefined).map(tab => chrome.tabs.sendMessage(tab.id!, { type: "theme", theme: theme.value })))
   } catch { show("Não foi possível aplicar o tema.", true) }
 })
 document.getElementById("repair")!.addEventListener("click", async () => {

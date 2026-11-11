@@ -7,7 +7,6 @@ import { mongoAuthState } from "../src/lib/whatsapp/auth-store"
 import { whatsappDb, ensureWhatsappIndexes, type Connection, type Job } from "../src/lib/whatsapp/store"
 import { dispatchOne, generateBirthdays, recordIncoming, isOptOut } from "../src/lib/whatsapp/engine"
 import { outgoingContent } from "../src/lib/whatsapp/media"
-import { isAllowedUser } from "../src/lib/allowed-users"
 
 async function main() {
 const { default: makeWASocket, DisconnectReason, jidNormalizedUser, proto } = await import("@whiskeysockets/baileys")
@@ -84,10 +83,10 @@ async function connect(connection: Connection) {
 async function tick() {
   const all = connections.find({})
   for await (const snapshot of all) {
-    const user = await db.collection<{ _id: string; email: string }>("users").findOne({ _id: snapshot._id }, { projection: { email: 1 } })
-    if (!isAllowedUser(user?.email)) {
+    const user = await db.collection<{ _id: string }>("users").findOne({ _id: snapshot._id }, { projection: { _id: 1 } })
+    if (!user) {
       const session = sessions.get(snapshot._id)
-      if (session) { sessions.delete(snapshot._id); session.socket.end(new Error("user access revoked")) }
+      if (session) { sessions.delete(snapshot._id); session.socket.end(new Error("user no longer exists")) }
       continue
     }
     const now = new Date()

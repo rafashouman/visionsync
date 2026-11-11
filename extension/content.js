@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // VisionSync — content script (roda dentro do WhatsApp Web)
 //
-// Coluna de ícones na direita (estilo Hotzapp) + painel que abre ao lado:
+// Coluna de ícones na esquerda + painel que abre ao lado:
 //   Conversa · Notas · Cobranças · Respostas rápidas · Painel web
 // E, acima do campo de mensagem: barra de respostas rápidas + atalho ";".
 //
@@ -13,7 +13,6 @@
 const ROOT_ID = "vcrm-root"
 const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
-const PANEL_W = 340
 const RAIL_W = 44
 const SCRIPT_VERSION = "0.22.0"
 
@@ -402,6 +401,7 @@ const TABS = [
   { id: "cobrancas", label: "Cobranças", icon: "wallet" },
   { id: "respostas", label: "Respostas rápidas", icon: "zap" },
   { id: "importar", label: "Importar do WhatsApp", icon: "download" },
+  { id: "aparencia", label: "Aparência", icon: "settings" },
 ]
 
 function ensureRoot() {
@@ -419,7 +419,7 @@ function ensureRoot() {
 }
 
 function applyLayout() {
-  document.documentElement.style.setProperty("--vcrm-pad", `${RAIL_W + (state.open ? PANEL_W : 0)}px`)
+  document.documentElement.style.setProperty("--vcrm-pad", state.open ? `calc(${RAIL_W}px + var(--vcrm-panel-width))` : `${RAIL_W}px`)
 }
 
 function toast(msg) {
@@ -477,7 +477,6 @@ function render() {
   const root = ensureRoot()
   if (state.open && state.tab === "respostas" && rp.form && root.querySelector('form[data-form="rpform"] input[name="replyFile"]')?.files?.length) return
   applyLayout()
-  ensureSide()
   ensureHeaderBar()
   // Coluna fina, só ícones (como a do Hotzapp), com uma linha separando o grupo da conversa do resto
   const openReminders = state.reminders.filter((r) => r.state !== "feito").length
@@ -504,6 +503,8 @@ function render() {
       <button class="vc-ico" data-act="kanban" title="Quadro Kanban no WhatsApp">${icon("columns", 19)}</button>
       <button class="vc-ico" data-act="dial" title="Abrir conversa sem salvar número">${icon("phone", 19)}</button>
       <button class="vc-ico ${prefs.blur ? "on" : ""}" data-act="blur" title="Modo Privacidade (borrar nomes e valores)">${icon(prefs.blur ? "eyeoff" : "eye", 19)}</button>
+      <button class="vc-ico" data-act="inbox-filters" title="Filtros de conversas" aria-label="Filtros de conversas" aria-expanded="${inboxFiltersOpen}">${icon("filter", 19)}</button>
+      ${hdrHidden && state.phone ? `<button class="vc-ico" data-act="schedule-chat" title="Agendar conversa" aria-label="Agendar conversa">${icon("alarm", 19)}</button><button class="vc-ico" data-act="funnel-chat" title="Etapa do funil" aria-label="Etapa do funil">${icon("columns", 19)}</button>` : ""}
       <div class="vc-grow"></div>
       <button class="vc-ico" data-act="web" title="Abrir o painel web">${icon("ext", 19)}</button>
     </aside>
@@ -524,6 +525,7 @@ function render() {
 }
 
 function renderBody() {
+  if (state.tab === "aparencia") return `<label for="vc-theme">Esquema de cores</label><select id="vc-theme" data-theme-select><option value="dark" ${prefs.theme === "dark" ? "selected" : ""}>Vision escuro</option><option value="light" ${prefs.theme === "light" ? "selected" : ""}>Vision claro</option><option value="minimal" ${prefs.theme === "minimal" ? "selected" : ""}>Vision minimalista</option></select><p class="vc-muted">A preferência também pode ser alterada no ícone da extensão.</p>`
   if (state.status === "no_config") return empty("Extensão não configurada", "Clique no ícone da extensão no Chrome e informe a URL do sistema e o token (gerado em Configurações).")
   if (state.status === "bad_token") return empty("Token inválido", "Gere um token novo em Configurações no painel web e atualize na extensão.")
   if (state.status === "offline") return empty("Sem conexão", "Confira a URL do sistema no ícone da extensão. O sistema precisa estar no ar.")
@@ -1297,54 +1299,11 @@ async function attachFile(r, direct = !!prefs.sendDirect) {
   toast(r.type === "AUDIO" ? "Áudio colocado. Confira e envie." : "Arquivo colocado. Confira a legenda e envie.")
 }
 
-// ── Barrinha lateral ao lado da conversa (atalhos pras abas) ──────────────────
-
-const SIDE_ID = "vcrm-side"
-let sideCollapsed = false
-
 /** Tem uma janela (modal) aberta no WhatsApp ou em outra extensão? Então a gente não cobre ela. */
 function modalOpen() {
   try {
     return !!document.querySelector('[role="dialog"], [aria-modal="true"], [data-animate-modal-popup="true"], [data-animate-modal-body="true"]')
   } catch { return false }
-}
-
-function ensureSide() {
-  const main = document.querySelector("#main")
-  let el = document.getElementById(SIDE_ID)
-  if (modalOpen()) { if (el) el.style.display = "none"; return }
-  if (el) el.style.display = ""
-  if (!main || state.status === "no_config" || state.status === "bad_token") { if (el) el.remove(); return }
-  if (!el) {
-    el = document.createElement("div")
-    el.id = SIDE_ID
-    el.addEventListener("click", (e) => {
-      const b = e.target.closest("button")
-      if (!b) return
-      if (b.dataset.collapse) { sideCollapsed = !sideCollapsed; return ensureSide() }
-      if (b.dataset.go === "__sched" || b.dataset.go === "__funnel") return toggleHdrPop(b.dataset.go === "__sched" ? "sched" : "funnel")
-      state.open = true
-      state.tab = b.dataset.go
-      refresh(true)
-      render()
-    })
-    document.body.appendChild(el)
-  }
-  const n = state.reminders.filter((r) => r.state !== "feito").length
-  const items = [
-    ...(hdrHidden ? [{ go: "__sched", icon: "alarm", label: "Agendar" }, { go: "__funnel", icon: "columns", label: "Funil" }] : []),
-    { go: "lembretes", icon: "checklist", label: "Lembretes", badge: n },
-    { go: "notas", icon: "note", label: "Notas" },
-    { go: "conversa", icon: "user", label: "Dados" },
-    { go: "cobrancas", icon: "wallet", label: "Cobrar" },
-  ]
-  const html = `<button class="vs-top" data-collapse="1" title="${sideCollapsed ? "Expandir" : "Recolher"}">${icon("chevron", 12)}</button>` +
-    (items.map((i) => `<button data-go="${i.go}" title="${i.label}">${icon(i.icon, 18)}${i.badge ? `<b>${i.badge}</b>` : ""}<span>${i.label}</span></button>`).join(""))
-  if (el.dataset.sig !== html) { el.innerHTML = html; el.dataset.sig = html }
-  el.classList.toggle("vs-min", sideCollapsed)
-  const r = main.getBoundingClientRect()
-  el.style.left = Math.round(r.left + 6) + "px"
-  el.style.top = Math.round(r.top + r.height * 0.42) + "px"
 }
 
 // ── Aviso: "N clientes esperam sua resposta" ─────────────────────────────────
@@ -1439,7 +1398,6 @@ function photoFromList(name) {
 async function checkWaiting() {
   if (!document.querySelector("#app")) return
   const r = await askBridge("waiting", 5000, { minMinutes: WAIT_MIN_MINUTES, maxHours: WAIT_MAX_HOURS })
-  ensureSide() // esconde/mostra a barrinha conforme tem janela aberta
   ensureHeaderBar()
   if (r && Array.isArray(r.waiting)) {
     waitList = r.waiting.filter((w) => !(waitHandled[w.key] >= w.lastT))
@@ -1476,7 +1434,7 @@ function ensureHeaderBar() {
   const off = !header || !state.phone || state.status === "no_config" || state.status === "bad_token" || modalOpen() || hdrHidden
   if (off) {
     if (el) el.style.display = "none"
-    if (hdrPop && (!hdrHidden || !document.getElementById(SIDE_ID))) { hdrPop = null; renderHdrPop() }
+    if (hdrPop && (!hdrHidden || !state.phone || modalOpen())) { hdrPop = null; renderHdrPop() }
     return
   }
   if (!el) {
@@ -1489,9 +1447,6 @@ function ensureHeaderBar() {
       toggleHdrPop(b.dataset.h)
     })
     document.body.appendChild(el)
-    listenGlobal(document, "click", (e) => {
-      if (hdrPop && !e.target.closest(`#${HDR_ID}, #${HPOP_ID}, #${SIDE_ID}`)) { hdrPop = null; renderHdrPop() }
-    }, true)
   }
   el.style.display = ""
   const cur = ((state.contact && state.contact.lists) || [])[0]
@@ -1533,7 +1488,7 @@ function schedPresets() {
 function renderHdrPop() {
   let pop = document.getElementById(HPOP_ID)
   const bar = document.getElementById(HDR_ID)
-  const side = document.getElementById(SIDE_ID)
+  const side = document.querySelector(`#${ROOT_ID} [data-act="${hdrPop === "sched" ? "schedule-chat" : "funnel-chat"}"]`)
   const anchor = !hdrHidden && bar && bar.style.display !== "none" ? bar : side
   if (!hdrPop || !anchor) { if (pop) pop.remove(); return }
   if (!pop) {
@@ -1545,8 +1500,8 @@ function renderHdrPop() {
     document.body.appendChild(pop)
   }
   const r = anchor.getBoundingClientRect()
-  pop.style.top = Math.round(r.bottom + 8) + "px"
-  pop.style.left = Math.round(anchor === side ? r.right + 8 : r.left) + "px"
+  pop.style.top = Math.max(8, Math.min(Math.round(r.bottom + 8), window.innerHeight - Math.min(pop.offsetHeight || 400, window.innerHeight - 16) - 8)) + "px"
+  pop.style.left = Math.max(8, Math.min(Math.round(anchor === side ? r.right + 8 : r.left), window.innerWidth - Math.min(300, window.innerWidth - 16) - 8)) + "px"
   pop.style.right = "auto"
   pop.classList.toggle("funnel", hdrPop === "funnel")
 
@@ -1633,8 +1588,8 @@ async function onHdrPopClick(e) {
     hdrPop = null
     renderHdrPop()
     ensureHeaderBar()
-    ensureSide()
-    toast(hdrHidden ? "Agendar e Funil agora ficam só na barrinha." : "Botões de volta no cabeçalho.")
+    render()
+    toast(hdrHidden ? "Agendar e Funil agora ficam na barra lateral." : "Botões de volta no cabeçalho.")
   }
 }
 
@@ -1972,6 +1927,13 @@ async function onClick(e) {
     return render()
   }
   const act = t.dataset.act
+  if (act === "inbox-filters") {
+    inboxFiltersOpen = !inboxFiltersOpen
+    ensureInboxTabs()
+    t.setAttribute("aria-expanded", String(inboxFiltersOpen))
+    return
+  }
+  if (act === "schedule-chat" || act === "funnel-chat") return toggleHdrPop(act === "schedule-chat" ? "sched" : "funnel")
   if (act === "new-server-send") {
     if (replyBusy || !lastQuickKey) return
     if (!confirm("Confira a conversa e a fila antes de continuar. Preparar outro envio permite enviar a mesma nota de voz novamente. Deseja continuar?")) return
@@ -2183,6 +2145,11 @@ async function onSubmit(e) {
 }
 
 function onInput(e) {
+  if (e.target.matches("[data-theme-select]")) {
+    applyPluginTheme(e.target.value)
+    void savePrefs().then(result => { if (!result?.ok) toast("Não foi possível salvar a aparência. Tente novamente.") })
+    return
+  }
   if (e.target.matches("[data-pref]")) {
     prefs[e.target.getAttribute("data-pref")] = e.target.checked
     savePrefs()
@@ -2345,6 +2312,7 @@ async function refresh(force) {
 
 const INBOX_TABS_ID = "vcrm-inbox-tabs"
 const INBOX_LIST_ID = "vcrm-inbox-list"
+let inboxFiltersOpen = false
 const inbox = {
   tab: "all", // "all" | "unread" | "waiting" | "scheduled" | "funnel"
   stageId: "all",
@@ -2379,6 +2347,7 @@ function ensureInboxTabs() {
   if (!pane || state.status === "no_config" || state.status === "bad_token") {
     if (bar) bar.remove()
     if (listEl) listEl.remove()
+    if (pane) pane.style.display = ""
     return
   }
   if (!bar) {
@@ -2399,8 +2368,9 @@ function ensureInboxTabs() {
         ensureInboxTabs()
       }
     }))
-    pane.parentNode.insertBefore(bar, pane)
+    document.body.appendChild(bar)
   }
+  bar.hidden = !inboxFiltersOpen
 
   const unreadCount = inbox.chats.filter((c) => !c.archived && c.unread > 0).length
   const waitCount = waitList.length || inbox.chats.filter((c) => !c.archived && c.lastFromMe === false).length
@@ -2820,20 +2790,28 @@ function startObserver() {
   const obs = new MutationObserver((muts) => {
     if (muts.every((m) => m.target.closest && m.target.closest(`#${ROOT_ID}, #${BAR_ID}, #${POP_ID}, #${INBOX_TABS_ID}, #${INBOX_LIST_ID}, #${KANBAN_MODAL_ID}`))) return
     cancelLater(timer)
-    timer = later(() => { refresh(false); ensureBar(); ensureSide(); ensureHeaderBar(); ensureInboxTabs() }, 400)
+    timer = later(() => { refresh(false); ensureBar(); ensureHeaderBar(); ensureInboxTabs() }, 400)
   })
   obs.observe(root, { childList: true, subtree: true })
   extensionLife.observers.add(obs)
   // janelas (modais) às vezes entram direto no <body>: esconde a barrinha e o aviso na hora
   let bodyTimer = null
   const bodyObserver = new MutationObserver((muts) => {
-    if (muts.every((m) => [...m.addedNodes, ...m.removedNodes].every((n) => n.id === ROOT_ID || n.id === BAR_ID || n.id === POP_ID || n.id === SIDE_ID || n.id === WAIT_ID))) return
+    if (muts.every((m) => [...m.addedNodes, ...m.removedNodes].every((n) => n.id === ROOT_ID || n.id === BAR_ID || n.id === POP_ID || n.id === WAIT_ID))) return
     cancelLater(bodyTimer)
-    bodyTimer = later(() => { ensureSide(); ensureHeaderBar(); renderWaiting() }, 150)
+    bodyTimer = later(() => { ensureHeaderBar(); renderWaiting() }, 150)
   })
   bodyObserver.observe(document.body, { childList: true })
   extensionLife.observers.add(bodyObserver)
-  listenGlobal(window, "resize", () => { ensureSide(); ensureHeaderBar() })
+  listenGlobal(window, "resize", () => { ensureHeaderBar(); if (hdrPop) renderHdrPop() })
+  listenGlobal(document, "click", (e) => {
+    if (hdrPop && !e.target.closest(`#${HDR_ID}, #${HPOP_ID}, #${ROOT_ID} [data-act="schedule-chat"], #${ROOT_ID} [data-act="funnel-chat"]`)) { hdrPop = null; renderHdrPop() }
+    if (inboxFiltersOpen && !e.target.closest(`#${INBOX_TABS_ID}, #${ROOT_ID} [data-act="inbox-filters"]`)) {
+      inboxFiltersOpen = false
+      ensureInboxTabs()
+      document.querySelector(`#${ROOT_ID} [data-act="inbox-filters"]`)?.setAttribute("aria-expanded", "false")
+    }
+  }, true)
   listenGlobal(document, "mouseover", onMsgHover, true)
   listenGlobal(document, "input", onComposerInput, true)
   listenGlobal(document, "keydown", (e) => { if (e.key === "Escape") closePop() }, true)
@@ -2858,14 +2836,18 @@ function init() {
     if (c.vcrmPrefs) Object.assign(prefs, c.vcrmPrefs)
     applyPluginTheme(prefs.theme)
     document.documentElement.classList.toggle("vcrm-blur", !!prefs.blur)
-    ensureHeaderBar(); ensureSide(); ensureBar(); ensureInboxTabs()
+    ensureHeaderBar(); ensureBar(); ensureInboxTabs(); render()
   }).catch(() => {})
   later(() => { checkWaiting(); refreshInboxData(true) }, 4000)
   repeat(checkWaiting, 5000) // lê só a memória do WhatsApp: é leve, e mantém a lista em tempo real
   repeat(() => refreshInboxData(false), 25000)
   chrome.runtime.onMessage?.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id || extensionLife.expired) return false
-    if (message?.type === "theme") applyPluginTheme(message.theme)
+    if (message?.type === "theme") {
+      applyPluginTheme(message.theme)
+      const select = document.querySelector("#vcrm-root [data-theme-select]")
+      if (select) select.value = prefs.theme
+    }
     if (message?.type === "connection-probe") {
       askBridge("chat", 1500).then(bridge => respond({ protocol: 1, version: SCRIPT_VERSION, main: !!document.querySelector("#main"), composer: !!getComposer(), bridge: !!bridge, expired: extensionLife.expired, lastSyncAt: state.lastSyncAt || null })).catch(() => respond({ protocol: 1, version: SCRIPT_VERSION, expired: true }))
       return true

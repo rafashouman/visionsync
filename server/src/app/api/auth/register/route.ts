@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
 import { Prisma } from "@prisma/client"
-import { isAllowedUser } from "@/lib/allowed-users"
 import { requestPasswordReset } from "@/lib/password-reset"
+import { isAccessEmailConfigured } from "@/lib/mail"
 
 const schema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -17,9 +17,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: "Confira nome e email." }, { status: 400 })
   try {
     const { name, email } = parsed.data
-    if (!isAllowedUser(email)) return NextResponse.json({ error: "Cadastro não autorizado. Entre em contato com o administrador." }, { status: 403 })
     if (!await allowAuthAttempt(`register:${email}`, 5, 3_600_000)) return NextResponse.json({ error: "Muitas tentativas para este email. Tente mais tarde." }, { status: 429, headers: { "Retry-After": "3600" } })
-    if (!process.env.RESEND_API_KEY || !process.env.AUTH_EMAIL_FROM || !(process.env.AUTH_URL || process.env.NEXTAUTH_URL)) return NextResponse.json({ error: "Cadastro por email indisponível. Entre em contato com o administrador." }, { status: 503 })
+    if (!isAccessEmailConfigured()) return NextResponse.json({ error: "Cadastro por email indisponível. Entre em contato com o administrador." }, { status: 503 })
 
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing?.password) {

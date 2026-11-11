@@ -3,7 +3,6 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
-import { isAllowedUser } from "@/lib/allowed-users"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   session: { strategy: "jwt" },
@@ -19,7 +18,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
         const email = String(credentials.email).trim().toLowerCase().slice(0, 254)
-        if (!isAllowedUser(email)) return null
         if (typeof credentials.password !== "string" || credentials.password.length > 1024) return null
         if (!await allowAuthAttempt("login:global", 300, 60_000) || !await allowAuthAttempt(`login:${email}`, 20, 900_000)) return null
         const user = await prisma.user.findUnique({
@@ -36,8 +34,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, user }) {
       if (user) { token.id = user.id; token.authenticatedAt = Date.now() }
       else if (token.id) {
-        const account = await prisma.user.findUnique({ where: { id: String(token.id) }, select: { email: true, passwordChangedAt: true } })
-        if (!account || !isAllowedUser(account.email) || (account.passwordChangedAt && account.passwordChangedAt.getTime() > Number(token.authenticatedAt || 0))) return null
+        const account = await prisma.user.findUnique({ where: { id: String(token.id) }, select: { passwordChangedAt: true } })
+        if (!account || (account.passwordChangedAt && account.passwordChangedAt.getTime() > Number(token.authenticatedAt || 0))) return null
       }
       return token
     },

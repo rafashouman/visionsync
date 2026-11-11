@@ -2,15 +2,13 @@ import { NextRequest } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { randomBytes, createHash } from "crypto"
-import { isAllowedUser } from "@/lib/allowed-users"
 
 /** Autenticação da extensão: header `Authorization: Bearer <token>`. */
 export async function getUserFromToken(req: NextRequest) {
   const header = req.headers.get("authorization") ?? ""
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : ""
   if (!token) return null
-  const user = await prisma.user.findFirst({ where: { apiTokenHash: hashApiToken(token), apiTokenExpiresAt: { gt: new Date() } } })
-  return user && isAllowedUser(user.email) ? user : null
+  return prisma.user.findFirst({ where: { apiTokenHash: hashApiToken(token), apiTokenExpiresAt: { gt: new Date() } } })
 }
 
 /**
