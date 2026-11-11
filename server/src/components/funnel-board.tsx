@@ -35,7 +35,7 @@ async function call(method: string, url: string, body?: unknown) {
     body: body ? JSON.stringify(body) : undefined,
   })
   const data = await res.json().catch(() => ({}))
-  if (signature && (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429))) pendingSales.delete(signature)
+  if (signature && res.ok) pendingSales.delete(signature)
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`)
   return data
 }

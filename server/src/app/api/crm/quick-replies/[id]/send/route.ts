@@ -16,7 +16,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     const db = await whatsappDb()
     const connection = await getConnection(db, user.id)
     if (!connection?.config.enabled || connection.config.paused || !connection.desired || connection.state !== "connected" || !connection.heartbeat || Date.now() - connection.heartbeat.getTime() > 45000) return NextResponse.json({ error: "Conecte o WhatsApp e retome a fila em Envios no servidor." }, { status: 409 })
-    if (!connection.config.phones.includes(parsed.data.phone)) return NextResponse.json({ error: "O destinatário não está entre os números autorizados do piloto." }, { status: 403 })
     const contact = await db.collection<PilotContact>("contacts").findOne({ userId: user.id, phone: parsed.data.phone })
     if (!contact || await db.collection("wa_exclusions").findOne({ userId: user.id, phone: parsed.data.phone })) return NextResponse.json({ error: "Contato indisponível ou bloqueado." }, { status: 409 })
     const { id } = await ctx.params

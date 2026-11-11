@@ -40,7 +40,7 @@ npm install
 Copy-Item server/.env.example server/.env
 ```
 
-Preencha `DATABASE_URL` com seu banco e `AUTH_URL`/`NEXTAUTH_URL` com a URL do sistema. Gere um segredo aleatório e use o mesmo valor em `AUTH_SECRET` e `NEXTAUTH_SECRET`. Não publique `.env`. Os valores do exemplo não são credenciais prontas.
+Preencha `DATABASE_URL` com seu banco e `AUTH_URL`/`NEXTAUTH_URL` com a URL do sistema. Gere um segredo aleatório e use o mesmo valor em `AUTH_SECRET` e `NEXTAUTH_SECRET`. Em `ALLOWED_USER_EMAILS`, informe os emails autorizados separados por vírgula; vazio bloqueia todos os acessos. Configure `RESEND_API_KEY` e `AUTH_EMAIL_FROM` com um remetente verificado para novos cadastros. Não publique `.env`. Os valores do exemplo não são credenciais prontas.
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -51,7 +51,7 @@ npm run dev
 
 `db:prepare` é uma ação explícita: inicia o replica set local quando necessário, aplica o schema e cria índices. Para um MongoDB já administrado, use `db:push` e depois `db:indexes`, após revisar o destino. `dev` apenas compila a extensão e inicia Next.js; não cria usuários, não aplica schema e não insere demonstração.
 
-Abra `http://localhost:3001`, cadastre sua conta e gere o token em Configurações. A senha exige no mínimo dez caracteres. O comando `dev` também gera o plugin e o download disponível no painel.
+Abra `http://localhost:3001`, cadastre um email autorizado e use o link recebido para definir uma senha de pelo menos oito caracteres. Gere o token em Configurações. O comando `dev` também gera o plugin e o download disponível no painel.
 
 Para começar do zero, cadastre o primeiro contato no painel ou use **Plugin WhatsApp** para instalar e conectar a extensão. Cada conta tem seus próprios dados; compartilhamento entre membros de uma equipe ainda não está disponível.
 
@@ -110,7 +110,7 @@ Para a prévia de importação comparar telefones completos, atualize o servidor
 
 - Telefones comparados integralmente com código do país e índice único por conta; removida a união por últimos oito dígitos na busca/importação.
 - Tokens de extensão armazenados como SHA-256 no servidor, vencendo em 90 dias; geração substitui o anterior e revogação está disponível.
-- Compras aceitam `Idempotency-Key`, conferem contato/conta, rejeitam mudanças de conteúdo com a mesma chave e repetem transações em conflitos transitórios. Novas compras preservam valor em centavos e BRL; `amount` é mantido por compatibilidade das telas existentes. Limite atual: R$ 21.474.836,47 por compra.
+- Compras aceitam `Idempotency-Key`, conferem contato/conta, rejeitam mudanças de conteúdo com a mesma chave e repetem transações em conflitos transitórios. No funil e na extensão, a mesma chave é reutilizada após uma resposta com erro enquanto a página permanece aberta; após recarregar a aba, confira se a compra já foi registrada antes de tentar novamente. Novas compras preservam valor em centavos e BRL; `amount` é mantido por compatibilidade das telas existentes. Limite atual: R$ 21.474.836,47 por compra.
 - Meta preservada como integração legada, **desativada por padrão** (`META_SEND_ENABLED=false`). Somente habilitar após configurar finalidade/base legal, validar payload e homologar dataset/conta. A fila durável e consentimento do roadmap ainda não foram implementados; o opt-in de ambiente não substitui esses requisitos.
 - Atualização de segurança do Next.js e correções pontuais de dependências indiretas no arquivo de versões. Segredos nunca devem ir para Git/logs.
 

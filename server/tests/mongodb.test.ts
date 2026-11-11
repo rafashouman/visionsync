@@ -10,6 +10,7 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
   const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ launchTimeout: 60_000 }] })
   process.env.DATABASE_URL = mongo.getUri("visionsync_test")
   process.env.NEXTAUTH_SECRET = "test-only-secret-for-isolated-integration-test"
+  process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
   const { prisma } = await import("../src/lib/prisma")
   try {
     await promisify(execFile)(process.execPath, [path.resolve("../node_modules/prisma/build/index.js"), "db", "push", "--skip-generate"], { cwd: process.cwd(), env: process.env, timeout: 60_000 })
@@ -69,6 +70,9 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       const req=new NextRequest("http://localhost/api/crm/me",{headers:{Authorization:`Bearer ${token}`}})
       await prisma.user.update({where:{id:user.id},data:{apiTokenHash:hashApiToken(token),apiTokenExpiresAt:new Date(Date.now()+60000)}})
       assert.equal((await getUserFromToken(req))?.id,user.id)
+      process.env.ALLOWED_USER_EMAILS = "other@example.test,new@example.test"
+      assert.equal(await getUserFromToken(req), null)
+      process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
       await prisma.user.update({where:{id:user.id},data:{apiTokenHash:null,apiTokenExpiresAt:null}})
       assert.equal(await getUserFromToken(req),null)
     })
@@ -170,14 +174,37 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       const register = (data: unknown) => POST(new NextRequest("http://localhost/api/auth/register", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
       }))
-      const invalid = await register({ name: "  ", email: "new@example.test", password: "pass1234", confirmPassword: "pass1234" })
+      const invalid = await register({ name: "  ", email: "new@example.test" })
       assert.equal(invalid.status, 400)
-      const created = await register({ name: " Nova Empresa ", email: " New@Example.Test ", password: "pass1234", confirmPassword: "pass1234" })
-      assert.equal(created.status, 201)
-      const account = await created.json()
+      assert.equal((await register({ name: "Outro", email: "notallowed@example.test" })).status, 403)
+      process.env.RESEND_API_KEY = "test-only"
+      process.env.AUTH_EMAIL_FROM = "VisionSync <test@example.test>"
+      process.env.AUTH_URL = "http://localhost:3001"
+      const originalFetch = globalThis.fetch
+      let activationLink = ""
+      globalThis.fetch = async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as { text: string }
+        activationLink = body.text.match(/http:\/\/\S+/)?.[0] ?? ""
+        return new Response("{}", { status: 200 })
+      }
+      let account: NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>
+      try {
+        const created = await register({ name: " Nova Empresa ", email: " New@Example.Test ", password: "attackerpass" })
+        assert.equal(created.status, 201)
+        account = await prisma.user.findUniqueOrThrow({ where: { email: "new@example.test" } })
+        assert.equal(account.password, null)
+        const token = new URL(activationLink).searchParams.get("token")
+        assert.ok(token)
+        const { resetPassword } = await import("../src/lib/password-reset")
+        process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,minor@example.test"
+        assert.equal(await resetPassword(token, "legitimatepass"), false)
+        process.env.ALLOWED_USER_EMAILS = "owner@example.test,other@example.test,new@example.test,minor@example.test"
+        assert.equal(await resetPassword(token, "legitimatepass"), true)
+        assert.equal(await resetPassword(token, "attackerpass"), false)
+      } finally { globalThis.fetch = originalFetch }
       assert.equal(account.name, "Nova Empresa")
       assert.equal(account.email, "new@example.test")
-      assert.equal((await register({ name: "Outra", email: "new@example.test", password: "pass1234", confirmPassword: "pass1234" })).status, 409)
+      assert.equal((await register({ name: "Outra", email: "new@example.test" })).status, 409)
       const { buildDay } = await import("../src/lib/day")
       assert.equal((await buildDay(account.id)).totalContatos, 0)
       await prisma.contact.create({ data: { userId: account.id, name: "Primeiro contato", phone: "5511988888888" } })
@@ -211,6 +238,28 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       assert.equal(second.charges.length, 1); assert.equal(second.hasMore, false)
       assert.equal(new Set([...first.charges, ...second.charges].map(x => x.id)).size, 501)
       assert.equal((await listCharges(other.id, "todas")).summary.pagas.count, 0)
+    })
+    await t.test("day dashboard counts all due charges and reminders beyond the first page", async () => {
+      const u = await prisma.user.create({ data: { email: "dashboard-volume@example.test" } })
+      const c = await prisma.contact.create({ data: { userId: u.id, name: "Volume", phone: "5511999991111" } })
+      const { dayKey } = await import("../src/lib/dates")
+      const today = new Date(`${dayKey(new Date())}T15:00:00Z`)
+      const past = new Date("2020-01-01T15:00:00Z")
+      await prisma.charge.createMany({ data: [
+        ...Array.from({ length: 501 }, () => ({ userId: u.id, contactId: c.id, amount: 10, dueDate: past })),
+        { userId: u.id, contactId: c.id, amount: 99, amountMinor: 125, dueDate: today },
+      ] })
+      await prisma.reminder.createMany({ data: [
+        ...Array.from({ length: 501 }, () => ({ userId: u.id, contactId: c.id, text: "Atrasado", dueAt: past })),
+        { userId: u.id, contactId: c.id, text: "Futuro", dueAt: new Date("2099-01-01T15:00:00Z") },
+      ] })
+      const { buildDay } = await import("../src/lib/day")
+      const { reminderCounts } = await import("../src/lib/reminders")
+      const day = await buildDay(u.id)
+      assert.deepEqual(day.cobrancas.hoje, { count: 1, total: 1.25 })
+      assert.equal(day.lembretes.atrasados, 501)
+      assert.equal((await reminderCounts(u.id)).proximos, 1)
+      assert.equal((await buildDay(other.id)).cobrancas.hoje.count, 0)
     })
     await t.test("funnel filters see old contacts and global totals exceed 2000; column pages stay bounded", async () => {
       const u = await prisma.user.create({ data: { email: "funnel@example.test" } })

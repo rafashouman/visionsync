@@ -9,31 +9,38 @@ import { limitedBody } from "@/lib/local-storage"
 import { readReplyMedia, PreparationError } from "@/lib/whatsapp/media"
 import { configSchema, defaults, afterDays, renderMessage } from "@/lib/whatsapp/policy"
 import { whatsappDb, getConnection, saveConfig, putJob, ensureWhatsappIndexes, type Job, type PilotContact, type Connection } from "@/lib/whatsapp/store"
+import { historyParams, listWhatsappHistory, parseCursor, whatsappConnectionHealth, whatsappQueueHealth } from "@/lib/whatsapp/history"
 
 export const runtime = "nodejs"
 const headers = { "Cache-Control": "private, no-store" }
 const payload = z.discriminatedUnion("action", [
   z.object({ action: z.literal("configure"), config: configSchema }).strict(),
   z.object({ action: z.enum(["connect", "disconnect", "pause", "resume"]) }).strict(),
-  z.object({ action: z.enum(["approve", "cancel"]), id: z.string().uuid() }).strict(),
+  z.object({ action: z.enum(["approve", "cancel", "acknowledge"]), id: z.string().uuid() }).strict(),
   z.object({ action: z.enum(["exclude", "include"]), phone: z.string().regex(/^[1-9]\d{9,14}$/) }).strict(),
   z.object({ action: z.literal("schedule"), kind: z.enum(["quote", "after_sale", "test", "scheduled"]), contactId: z.string().min(1).max(100), requestId: z.string().uuid(), text: z.string().trim().max(2000).optional(), replyId: z.string().min(1).max(100).optional(), dueAt: z.string().datetime().optional() }).strict(),
 ])
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  const params = historyParams.safeParse(Object.fromEntries(req.nextUrl.searchParams))
+  if (!params.success) return NextResponse.json({ error: "Filtros de histórico inválidos." }, { status: 400, headers })
+  if (params.data.cursor) {
+    try { parseCursor(params.data.cursor) }
+    catch { return NextResponse.json({ error: "Cursor de histórico inválido." }, { status: 400, headers }) }
+  }
   try {
     const db = await whatsappDb()
     const userId = session.user.id
     const connection = await getConnection(db, userId)
-    const jobs = await db.collection<Job>("wa_jobs").find({ userId }).sort({ createdAt: -1 }).limit(60).toArray()
-    const contacts = await db.collection<PilotContact>("contacts").find({ userId, phone: { $in: connection?.config.phones ?? [] } }, { projection: { _id: 1, name: 1, phone: 1 } }).limit(2).toArray()
-    const online = Boolean(connection?.heartbeat && Date.now() - connection.heartbeat.getTime() < 45000)
+    const [history, queueHealth] = await Promise.all([listWhatsappHistory(db, userId, params.data), whatsappQueueHealth(db, userId)])
+    const contacts = await db.collection<PilotContact>("contacts").find({ userId }, { projection: { _id: 1, name: 1, phone: 1 } }).sort({ name: 1 }).toArray()
+    const online = whatsappConnectionHealth(connection).workerOnline
     const qr = online && connection?.qrEncrypted && connection.qrUntil && connection.qrUntil > new Date()
       ? await QRCode.toDataURL(decryptSecret(connection.qrEncrypted), { width: 280, margin: 2 }) : null
-    const exclusions = await db.collection<{ userId: string; phone: string }>("wa_exclusions").find({ userId }, { projection: { _id: 0, phone: 1 } }).limit(100).toArray()
-    return NextResponse.json({ config: connection?.config ?? defaults, state: online ? connection?.state : "worker_offline", workerOnline: online, phone: connection?.phone, qr, jobs, contacts, exclusions: exclusions.map(x => x.phone) }, { headers })
-  } catch { return NextResponse.json({ error: "Não foi possível consultar a conexão do WhatsApp." }, { status: 503, headers }) }
+    const exclusions = await db.collection<{ userId: string; phone: string }>("wa_exclusions").find({ userId }, { projection: { _id: 0, phone: 1 } }).toArray()
+    return NextResponse.json({ config: configSchema.parse(connection?.config ?? defaults), state: online ? connection?.state : "worker_offline", desired: connection?.desired ?? false, workerOnline: online, heartbeat: connection?.heartbeat ?? null, phone: connection?.phone, qr, ...history, queueHealth, contacts, exclusions: exclusions.map(x => x.phone) }, { headers })
+  } catch (error) { console.error("[whatsapp GET]", error); return NextResponse.json({ error: "Não foi possível consultar a conexão do WhatsApp." }, { status: 503, headers }) }
 }
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -55,18 +62,24 @@ export async function POST(req: NextRequest) {
       await saveConfig(db, userId, data.config)
       return NextResponse.json({ ok: true })
     }
-    const connection = await getConnection(db, userId)
-    if (!connection) return NextResponse.json({ error: "Salve os números e as regras primeiro." }, { status: 409 })
+    let connection = await getConnection(db, userId)
+    if (!connection && data.action === "connect") {
+      await saveConfig(db, userId, { ...defaults, enabled: true })
+      connection = await getConnection(db, userId)
+    }
+    if (!connection) return NextResponse.json({ error: "Conecte o WhatsApp ou salve as configurações primeiro." }, { status: 409 })
     if (data.action === "connect" || data.action === "disconnect") {
-      if (data.action === "connect" && (!connection.config.enabled || !connection.config.phones.length)) return NextResponse.json({ error: "Habilite o piloto e informe os números autorizados." }, { status: 409 })
-      await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, { $set: { desired: data.action === "connect", command: randomUUID(), qrEncrypted: null, updatedAt: new Date(), ...(data.action === "disconnect" ? { "config.paused": true } : {}) } })
+      await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, { $set: { desired: data.action === "connect", command: randomUUID(), qrEncrypted: null, updatedAt: new Date(), ...(data.action === "disconnect" ? { "config.paused": true } : { "config.enabled": true }) } })
     } else if (data.action === "pause" || data.action === "resume") {
       await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, { $set: { "config.paused": data.action === "pause", updatedAt: new Date() } })
+    } else if (data.action === "acknowledge") {
+      const result = await db.collection<Job>("wa_jobs").updateOne({ _id: data.id, userId, status: "uncertain" }, { $set: { checkedAt: new Date(), updatedAt: new Date() } })
+      if (!result.matchedCount) return NextResponse.json({ error: "A mensagem mudou de estado. Atualize a lista." }, { status: 409 })
     } else if (data.action === "approve" || data.action === "cancel") {
       const result = await db.collection<Job>("wa_jobs").updateOne({ _id: data.id, userId, status: { $in: data.action === "approve" ? ["review"] : ["review", "queued"] } }, { $set: { status: data.action === "approve" ? "queued" : "canceled", approved: data.action === "approve", updatedAt: new Date() } })
       if (!result.matchedCount) return NextResponse.json({ error: "A mensagem mudou de estado. Atualize a lista." }, { status: 409 })
     } else if (data.action === "exclude" || data.action === "include") {
-      if (!connection.config.phones.includes(data.phone)) return NextResponse.json({ error: "Número fora do piloto" }, { status: 400 })
+      if (!await db.collection<PilotContact>("contacts").findOne({ userId, phone: data.phone })) return NextResponse.json({ error: "Contato não encontrado." }, { status: 404 })
       const collection = db.collection<{ userId: string; phone: string }>("wa_exclusions")
       if (data.action === "include") await collection.deleteOne({ userId, phone: data.phone })
       else {
@@ -74,8 +87,8 @@ export async function POST(req: NextRequest) {
         await db.collection<Job>("wa_jobs").updateMany({ userId, phone: data.phone, status: { $in: ["review", "queued"] } }, { $set: { status: "canceled", reason: "Contato excluído", updatedAt: new Date() } })
       }
     } else if (data.action === "schedule") {
-      const contact = await db.collection<PilotContact>("contacts").findOne({ _id: data.contactId, userId, phone: { $in: connection.config.phones } })
-      if (!contact) return NextResponse.json({ error: "Cadastre o contato no CRM com um dos números autorizados." }, { status: 404 })
+      const contact = await db.collection<PilotContact>("contacts").findOne({ _id: data.contactId, userId })
+      if (!contact) return NextResponse.json({ error: "Contato não encontrado no CRM." }, { status: 404 })
       if (await db.collection("wa_exclusions").findOne({ userId, phone: contact.phone })) return NextResponse.json({ error: "O contato está excluído dos envios." }, { status: 409 })
       const config = connection.config
       if ((data.kind === "quote" && !config.quote) || (data.kind === "after_sale" && !config.afterSale)) return NextResponse.json({ error: "Habilite e salve a regra correspondente." }, { status: 409 })
@@ -89,5 +102,5 @@ export async function POST(req: NextRequest) {
       await putJob(db, { userId, contactId: contact._id, phone: contact.phone, name: contact.name, kind: data.kind, text, ...(media ? { attachment: media.attachment } : {}), dueAt, expiresAt: new Date(dueAt.getTime() + 24 * 3600000), eventAt: now, status: data.kind === "test" || !config.automatic ? "review" : "queued", key: `${data.kind}:${data.requestId}` })
     }
     return NextResponse.json({ ok: true })
-  } catch (error) { return NextResponse.json({ error: error instanceof PreparationError ? error.message : "Não foi possível concluir a operação do WhatsApp." }, { status: error instanceof PreparationError ? 400 : 503 }) }
+  } catch (error) { if (!(error instanceof PreparationError)) console.error("[whatsapp POST]", error); return NextResponse.json({ error: error instanceof PreparationError ? error.message : "Não foi possível concluir a operação do WhatsApp." }, { status: error instanceof PreparationError ? 400 : 503 }) }
 }

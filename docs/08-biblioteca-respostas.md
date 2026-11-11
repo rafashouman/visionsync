@@ -4,7 +4,7 @@
 
 No site, abra Respostas rápidas → Nova → Áudio → Gravar agora. Autorize o microfone. O gravador permite até três minutos e 4 MB; use Parar e ouvir para revisar. Regravar ou Descartar não altera a resposta já salva. O microfone é liberado ao parar, descartar ou fechar o editor, inclusive quando uma permissão pendente é concedida depois do fechamento.
 
-Usar gravação envia o áudio para conversão em OGG/Opus. Depois, Salvar cria ou atualiza a resposta na biblioteca. A opção de nota de voz fica marcada para a gravação convertida e pode ser desmarcada; o envio como nota de voz continua dependendo do conector do servidor e das restrições do piloto. Não há envio ao WhatsApp durante gravação, conversão ou prévia.
+Usar gravação envia o áudio para conversão em OGG/Opus. Depois, Salvar cria ou atualiza a resposta na biblioteca. A opção de nota de voz fica marcada para a gravação convertida e pode ser desmarcada; o envio como nota de voz continua dependendo do conector do servidor e das configurações da fila. Não há envio ao WhatsApp durante gravação, conversão ou prévia.
 
 Se a conversão falhar, a gravação permanece disponível para ouvir, baixar, descartar ou tentar novamente. O editor impede salvar enquanto houver gravação pendente de aceitação. Upload de arquivos OGG e MP3 continua disponível.
 

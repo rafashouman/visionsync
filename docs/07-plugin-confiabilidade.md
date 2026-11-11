@@ -11,7 +11,7 @@ Primeira etapa do plano de aperfeiçoamento do plugin. Não inclui os futuros fl
 - O painel mantém o estado da última operação. **Solicitado** não significa **entregue**. Entrega e leitura só aparecem a partir dos estados informados pelo conector.
 - Uma nota de voz colocada na fila não conclui o lembrete nem libera o próximo passo da sequência. Acompanhe e aprove pela página Envios no servidor.
 - Cliques repetidos na mesma nota de voz e destinatário reutilizam a solicitação durante a vida desta aba. Para uma nova transmissão intencional, use **Preparar outro envio**, depois de conferir a conversa e a fila. Essa proteção em memória não sobrevive ao recarregamento da aba.
-- Lembretes do navegador avisam no horário e dependem da ação do atendente. A execução no servidor é um fluxo separado, ainda sujeito às restrições do piloto.
+- Lembretes do navegador avisam no horário e dependem da ação do atendente. A execução no servidor é um fluxo separado, sujeito às configurações e à pausa da fila.
 
 ## Diagnóstico
 

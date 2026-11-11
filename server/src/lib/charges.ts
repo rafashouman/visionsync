@@ -53,6 +53,17 @@ export async function summarizeCharges(userId: string, now = new Date()) {
   return summary
 }
 
+export async function summarizeChargesDueToday(userId: string, now = new Date()) {
+  const today = new Date(`${dayKey(now)}T03:00:00Z`)
+  const tomorrow = new Date(today.getTime() + 86_400_000)
+  const rows = await prisma.charge.aggregateRaw({ pipeline: [
+    { $match: { userId, status: "PENDING", dueDate: { $gte: { $date: today.toISOString() }, $lt: { $date: tomorrow.toISOString() } } } },
+    { $group: { _id: null, count: { $sum: 1 }, minor: { $sum: { $ifNull: ["$amountMinor", { $round: [{ $multiply: ["$amount", 100] }, 0] }] } } } },
+  ] })
+  const row = (rows as unknown as { count: number; minor: number }[])[0]
+  return row ? { count: row.count, total: row.minor / 100 } : { count: 0, total: 0 }
+}
+
 export async function listCharges(userId: string, filter: ChargeFilter, page = 1) {
   page = Math.max(1, Math.min(100_000, Math.floor(page) || 1))
   const now = new Date()

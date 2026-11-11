@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
+import { randomUUID } from "node:crypto"
 const source = readFileSync(new URL("../content.js", import.meta.url), "utf8")
 
 function fixture(sendMessage: (message: unknown, callback?: (response: unknown) => void) => unknown, lastError?: { message: string }) {
@@ -11,12 +12,13 @@ function fixture(sendMessage: (message: unknown, callback?: (response: unknown) 
     document: { addEventListener() {}, createElement() { return { setAttribute() {} } }, body: { appendChild(node: unknown) { banners.push(node) } } },
     chrome: { runtime: { id: "test-extension", sendMessage, lastError } },
     setInterval() { return 42 }, clearInterval(id: unknown) { cleared.push(id) }, setTimeout, clearTimeout,
-    notices, box, btoa,
+    notices, box, btoa, crypto: { randomUUID },
   }
   const adapter = runInNewContext(`${source}
     toast = message => notices.push(message);
     getComposer = () => box; ensureBar = () => {}; state.phone = '5511999999999';
-    ({ runtimeMessage, savePrefs, attachFile, useReply, parseSequenceSteps, mediaPicker, uploadReplyFile, guardedEvent, invalidateExtension, life: extensionLife, setPhone: phone => state.phone = phone, setRun: fn => runReply = fn })`, context) as {
+    ({ api, runtimeMessage, savePrefs, attachFile, useReply, parseSequenceSteps, mediaPicker, uploadReplyFile, guardedEvent, invalidateExtension, life: extensionLife, setPhone: phone => state.phone = phone, setRun: fn => runReply = fn })`, context) as {
+      api: (method: string, path: string, body: unknown) => Promise<unknown>
       runtimeMessage: (message: unknown) => Promise<{ ok: boolean; error?: string }>
       savePrefs: (values?: unknown) => Promise<unknown>
       attachFile: (reply: unknown) => Promise<unknown>
@@ -30,6 +32,18 @@ function fixture(sendMessage: (message: unknown, callback?: (response: unknown) 
     }
   return { ...adapter, banners, notices, cleared }
 }
+test("purchase retries keep their operation key after server errors and use a new key after success", async () => {
+  const keys: string[] = []
+  let success = false
+  const f = fixture((message, callback) => {
+    keys.push((message as { requestKey: string }).requestKey)
+    callback?.(success ? { ok: true, status: 201 } : { ok: false, status: 500 })
+  })
+  const send = () => f.api("POST", "/api/crm/purchase", { phone: "5511999999999", amount: 10 })
+  await send(); success = true; await send(); await send()
+  assert.equal(keys[0], keys[1])
+  assert.notEqual(keys[1], keys[2])
+})
 test("invalidated runtime: synchronous throws and promise rejection stop old loops without uncaught errors", async () => {
   for (const send of [() => { throw new Error("Extension context invalidated.") }, () => Promise.reject(new Error("Extension context invalidated."))]) {
     const f = fixture(send)

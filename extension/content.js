@@ -153,7 +153,7 @@ function api(method, path, body) {
       let requestKey = signature && purchaseRequests.get(signature)
       if (purchase && !requestKey) { requestKey = crypto.randomUUID(); purchaseRequests.set(signature, requestKey) }
       runtimeMessage({ type: "api", method, path, body, ...(requestKey ? { requestKey } : {}) }).then((r) => {
-        if (signature && r && r.status) purchaseRequests.delete(signature)
+        if (signature && r?.ok) purchaseRequests.delete(signature)
         resolve(r || { ok: false, status: 0 })
       })
     } catch {

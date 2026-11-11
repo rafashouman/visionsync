@@ -5,24 +5,32 @@ import { Binary, MongoClient } from "mongodb"
 import { randomUUID } from "node:crypto"
 import { atNine, afterDays, defaults, canSend, localParts, configSchema, renderMessage } from "../src/lib/whatsapp/policy"
 import { dispatchOne, generateBirthdays, recordIncoming, isOptOut } from "../src/lib/whatsapp/engine"
-import { ensureWhatsappIndexes, putJob, type Job, type Connection } from "../src/lib/whatsapp/store"
+import { ensureWhatsappIndexes, putJob, type Job, type Connection, type PilotContact } from "../src/lib/whatsapp/store"
 import { mongoAuthState } from "../src/lib/whatsapp/auth-store"
 import { readReplyMedia, prepareMedia, outgoingContent, PreparationError } from "../src/lib/whatsapp/media"
+import { listWhatsappHistory, parseCursor, whatsappConnectionHealth, whatsappQueueHealth } from "../src/lib/whatsapp/history"
 
-test("pilot policy: full numbers, two-recipient cap, Brasilia calendar and opt-out", () => {
-  assert.equal(configSchema.safeParse({ ...defaults, phones: ["5511999999999"] }).success, true)
-  assert.equal(configSchema.safeParse({ ...defaults, phones: ["123"] }).success, false)
-  assert.equal(configSchema.safeParse({ ...defaults, phones: ["5511999999999", "5521999999999", "5531999999999"] }).success, false)
+test("configuration accepts legacy data without preserving recipient restrictions", () => {
+  const parsed = configSchema.parse({ ...defaults, phones: ["5511999999999"] })
+  assert.equal("phones" in parsed, false)
   assert.equal(atNine("2026-11-10").toISOString(), "2026-11-10T12:00:00.000Z")
   assert.equal(afterDays(new Date("2026-12-31T22:00:00Z"), 2).toISOString(), "2027-01-02T12:00:00.000Z")
   assert.equal(localParts(new Date("2026-11-10T01:00:00Z")).day, "2026-11-09")
-  const config = { ...defaults, enabled: true, paused: false, phones: ["5511999999999"] }
-  assert.equal(canSend(config, config.phones[0], new Date("2026-11-10T23:00:00Z")), false)
-  assert.equal(canSend(config, config.phones[0], new Date("2026-11-10T23:00:00Z"), true), true)
-  assert.equal(canSend(config, "5521999999999", new Date("2026-11-10T12:00:00Z"), true), false)
+  const config = { ...defaults, enabled: true, paused: false }
+  assert.equal(canSend(config), true)
+  assert.equal(canSend({ ...config, paused: true }), false)
   assert.equal(renderMessage("Oi {primeiro_nome}: {nome}", "Ana Silva"), "Oi Ana: Ana Silva")
   assert.ok(isOptOut("NÃO QUERO RECEBER!"))
   assert.equal(isOptOut("Quero cancelar meu orçamento"), false)
+})
+
+test("connection health reports stale workers and connection failures without warning on an unconfigured account", () => {
+  const now = new Date("2026-11-10T12:30:00Z")
+  const base: Connection = { _id: "user", config: defaults, desired: true, command: "start", updatedAt: now, heartbeat: now, state: "connected" }
+  assert.equal(whatsappConnectionHealth(null, now).connectionProblem, false)
+  assert.equal(whatsappConnectionHealth(base, now).connectionProblem, false)
+  assert.equal(whatsappConnectionHealth({ ...base, heartbeat: new Date(now.getTime() - 45000) }, now).connectionProblem, true)
+  assert.equal(whatsappConnectionHealth({ ...base, state: "logged_out", desired: false }, now).connectionProblem, true)
 })
 
 test("durable pilot queue with fake transport only", async t => {
@@ -33,7 +41,7 @@ test("durable pilot queue with fake transport only", async t => {
   const userId = "agency"
   const phone = "5511999999999"
   const workerId = "worker-a"
-  const config = { ...defaults, enabled: true, paused: false, automatic: true, phones: [phone], birthday: true, quote: true, afterSale: true }
+  const config = { ...defaults, enabled: true, paused: false, automatic: true, birthday: true, quote: true, afterSale: true }
   const sent: string[] = []
   const send = async (_phone: string, _text: string, id: string) => { sent.push(id) }
   async function seed() {
@@ -50,6 +58,34 @@ test("durable pilot queue with fake transport only", async t => {
   }
   try {
     await ensureWhatsappIndexes(db)
+    await t.test("history pages all records, filters text and status, and never crosses accounts", async () => {
+      await seed()
+      for (let i = 0; i < 75; i++) await enqueue({ name: i === 0 ? "Alice" : "Outro", text: i === 0 ? "Mensagem ÚNICA" : "Texto", status: i % 2 ? "review" : "queued" })
+      await enqueue({ userId: "other-account", name: "Alice", status: "queued" })
+      await db.collection<Job>("wa_jobs").updateMany({}, { $set: { createdAt: now } })
+      const seen = new Set<string>()
+      let cursor: string | undefined
+      do {
+        const page = await listWhatsappHistory(db, userId, { cursor })
+        for (const job of page.jobs) { assert.equal(job.userId, userId); assert.equal(seen.has(job._id), false); seen.add(job._id) }
+        cursor = page.nextCursor ?? undefined
+      } while (cursor)
+      assert.equal(seen.size, 75)
+      assert.equal((await listWhatsappHistory(db, userId, { q: "ALICE" })).jobs.length, 1)
+      assert.equal((await listWhatsappHistory(db, userId, { q: "única" })).jobs.length, 1)
+      assert.equal((await listWhatsappHistory(db, userId, { q: "ÚNICA" })).jobs.length, 1)
+      assert.equal((await listWhatsappHistory(db, userId, { q: "5511999999999", status: "review" })).jobs.length, 30)
+      const health = await whatsappQueueHealth(db, userId, now)
+      assert.equal(health.review, 37); assert.equal(health.queued, 38); assert.equal(health.overdue, 38)
+      const first = await db.collection<Job>("wa_jobs").findOne({ userId })
+      assert.ok(first)
+      await db.collection<Job>("wa_jobs").updateOne({ _id: first._id }, { $set: { status: "uncertain" } })
+      assert.equal((await whatsappQueueHealth(db, userId, now)).unreviewed, 1)
+      await db.collection<Job>("wa_jobs").updateOne({ _id: first._id }, { $set: { checkedAt: now } })
+      assert.equal((await whatsappQueueHealth(db, userId, now)).unreviewed, 0)
+      assert.equal((await whatsappQueueHealth(db, userId, now)).uncertain, 1)
+      assert.throws(() => parseCursor("invalid"))
+    })
     await t.test("media payloads use original uploads, verify ownership and snapshots, and require genuine Opus for voice notes", async () => {
       const replies = db.collection<{ _id: string; userId: string; type: string; mediaMime: string; asVoiceNote: boolean; viewOnce?: boolean }>("quick_replies")
       const files = db.collection<{ _id: string; data: Binary }>("quick_reply_files")
@@ -98,8 +134,13 @@ test("durable pilot queue with fake transport only", async t => {
     })
     await t.test("birthday generation is tenant-scoped and idempotent across concurrent ticks", async () => {
       await seed()
-      await Promise.all([generateBirthdays(db, userId, now), generateBirthdays(db, userId, now)])
-      assert.equal(await db.collection("wa_jobs").countDocuments({ userId, kind: "birthday" }), 1)
+      const late = new Date("2026-11-10T23:30:00Z")
+      await db.collection<PilotContact>("contacts").insertMany([
+        { _id: "birthday-b", userId, phone: "5521999999999", name: "B", birthDate: new Date("1990-11-10T15:00:00Z") },
+        { _id: "birthday-c", userId, phone: "5531999999999", name: "C", birthDate: new Date("1990-11-10T15:00:00Z") },
+      ])
+      await Promise.all([generateBirthdays(db, userId, late), generateBirthdays(db, userId, late)])
+      assert.equal(await db.collection("wa_jobs").countDocuments({ userId, kind: "birthday" }), 3)
       await generateBirthdays(db, "other-account", now)
       assert.equal(await db.collection("wa_jobs").countDocuments({ userId: "other-account" }), 0)
     })
@@ -120,7 +161,7 @@ test("durable pilot queue with fake transport only", async t => {
       assert.equal(attempts, 1); assert.equal(sent.length, 0)
       assert.equal((await db.collection("wa_jobs").findOne({ userId }))?.status, "uncertain")
     })
-    await t.test("pause, expiry, exclusions and removed recipients prevent transmission", async () => {
+    await t.test("pause, expiry and exclusions prevent transmission", async () => {
       await seed(); await enqueue()
       await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, { $set: { "config.paused": true } })
       await dispatchOne(db, userId, workerId, send, now); assert.equal(sent.length, 0)
@@ -131,9 +172,18 @@ test("durable pilot queue with fake transport only", async t => {
       await recordIncoming(db, userId, phone, now, true)
       await dispatchOne(db, userId, workerId, send, now); assert.equal(sent.length, 0)
       assert.ok(await db.collection("wa_exclusions").findOne({ userId, phone }))
-      await seed(); await enqueue({ phone: "5521999999999" })
-      await dispatchOne(db, userId, workerId, send, now)
-      assert.equal((await db.collection("wa_jobs").findOne({ userId }))?.status, "canceled")
+    })
+    await t.test("dispatch works outside business hours for more than two contacts without a minute gap", async () => {
+      await seed()
+      const late = new Date("2026-11-10T23:30:00Z")
+      await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, { $set: { leaseUntil: new Date(late.getTime() + 90000) } })
+      const contacts = db.collection<PilotContact>("contacts")
+      await contacts.insertMany([{ _id: "contact-b", userId, phone: "5521999999999", name: "B" }, { _id: "contact-c", userId, phone: "5531999999999", name: "C" }])
+      for (const [contactId, target] of [["contact-a", phone], ["contact-b", "5521999999999"], ["contact-c", "5531999999999"]]) {
+        await enqueue({ contactId, phone: target, dueAt: new Date(late.getTime() - 1000), expiresAt: new Date(late.getTime() + 60000) })
+      }
+      for (let i = 0; i < 3; i++) await dispatchOne(db, userId, workerId, send, late)
+      assert.equal(sent.length, 3)
     })
     await t.test("a customer reply cancels follow-up but does not cancel birthday", async () => {
       await seed(); await enqueue(); await enqueue({ kind: "birthday" })

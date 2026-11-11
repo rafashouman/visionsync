@@ -56,8 +56,14 @@ export async function listReminders(userId: string, opts: { contactId?: string; 
 }
 
 /** Resumo pro cartão de números e pro menu. */
-export async function reminderCounts(userId: string) {
-  const { reminders } = await listReminders(userId)
-  const count = (s: ReminderState) => reminders.filter((r) => r.state === s).length
-  return { atrasados: count("atrasado"), hoje: count("hoje"), proximos: count("proximo"), adiadas: reminders.filter((r) => r.snoozeCount > 0).length }
+export async function reminderCounts(userId: string, now = new Date()) {
+  const tomorrow = new Date(new Date(`${dayKey(now)}T03:00:00Z`).getTime() + 86_400_000)
+  const open = { userId, OR: [{ doneAt: null }, { doneAt: { isSet: false } }] }
+  const [atrasados, hoje, proximos, adiadas] = await Promise.all([
+    prisma.reminder.count({ where: { ...open, dueAt: { lt: now } } }),
+    prisma.reminder.count({ where: { ...open, dueAt: { gte: now, lt: tomorrow } } }),
+    prisma.reminder.count({ where: { ...open, dueAt: { gte: tomorrow } } }),
+    prisma.reminder.count({ where: { ...open, snoozeCount: { gt: 0 } } }),
+  ])
+  return { atrasados, hoje, proximos, adiadas }
 }

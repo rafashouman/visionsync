@@ -7,6 +7,7 @@ import { mongoAuthState } from "../src/lib/whatsapp/auth-store"
 import { whatsappDb, ensureWhatsappIndexes, type Connection, type Job } from "../src/lib/whatsapp/store"
 import { dispatchOne, generateBirthdays, recordIncoming, isOptOut } from "../src/lib/whatsapp/engine"
 import { outgoingContent } from "../src/lib/whatsapp/media"
+import { isAllowedUser } from "../src/lib/allowed-users"
 
 async function main() {
 const { default: makeWASocket, DisconnectReason, jidNormalizedUser, proto } = await import("@whiskeysockets/baileys")
@@ -64,7 +65,7 @@ async function connect(connection: Connection) {
       if (jid.endsWith("@lid")) jid = await socket.signalRepository.lidMapping.getPNForLID(jid) ?? ""
       if (!jid.endsWith("@s.whatsapp.net")) continue
       const phone = jidNormalizedUser(jid).split("@")[0]
-      if (!active.config.phones.includes(phone)) continue
+      if (!await db.collection("contacts").findOne({ userId, phone }, { projection: { _id: 1 } })) continue
       const text = message.message?.conversation ?? message.message?.extendedTextMessage?.text ?? ""
       const seconds = Number(message.messageTimestamp)
       if (!Number.isFinite(seconds)) continue
@@ -81,8 +82,14 @@ async function connect(connection: Connection) {
 }
 
 async function tick() {
-  const all = await connections.find({}).limit(10).toArray()
-  for (const snapshot of all) {
+  const all = connections.find({})
+  for await (const snapshot of all) {
+    const user = await db.collection<{ _id: string; email: string }>("users").findOne({ _id: snapshot._id }, { projection: { email: 1 } })
+    if (!isAllowedUser(user?.email)) {
+      const session = sessions.get(snapshot._id)
+      if (session) { sessions.delete(snapshot._id); session.socket.end(new Error("user access revoked")) }
+      continue
+    }
     const now = new Date()
     const previous = await connections.findOneAndUpdate({ _id: snapshot._id, $or: [{ workerId }, { leaseUntil: { $lte: now } }, { leaseUntil: { $exists: false } }] }, { $set: { workerId, heartbeat: now, leaseUntil: new Date(now.getTime() + 90000) } }, { returnDocument: "before" })
     if (!previous) {
@@ -113,7 +120,8 @@ async function tick() {
       await connections.updateOne({ _id: current._id, workerId }, { $set: { state: "connecting" } })
       await connect(current)
     }
-    await generateBirthdays(db, current._id)
+    try { await generateBirthdays(db, current._id) }
+    catch (error) { console.error("Falha ao preparar aniversários; confira a mídia e a configuração da conta.", error) }
     const ready = sessions.get(current._id)
     if (ready && !ready.closed && Date.now() >= ready.readyAt) {
       await Promise.all(ready.inbound)
@@ -129,9 +137,9 @@ async function tick() {
 
 process.on("SIGINT", () => { running = false })
 process.on("SIGTERM", () => { running = false })
-console.log(`Worker WhatsApp iniciado (PID ${process.pid}). Configure o piloto e vincule a conta no CRM.`)
+console.log(`Worker WhatsApp iniciado (PID ${process.pid}). Vincule a conta no CRM.`)
 while (running) {
-  try { await tick() } catch { console.error("Worker indisponível temporariamente; nova tentativa em 5 segundos.") }
+  try { await tick() } catch (error) { console.error("Worker indisponível temporariamente; nova tentativa em 5 segundos.", error) }
   if (running) await new Promise(resolve => setTimeout(resolve, 5000))
 }
 for (const entry of sessions.values()) entry.socket.end(new Error("worker shutdown"))

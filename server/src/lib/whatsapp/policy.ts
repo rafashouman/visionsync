@@ -4,7 +4,6 @@ export const kinds = ["birthday", "quote", "after_sale", "test", "quick", "sched
 export type MessageKind = typeof kinds[number]
 export const configSchema = z.object({
   enabled: z.boolean(), paused: z.boolean(), automatic: z.boolean(),
-  phones: z.array(z.string().regex(/^[1-9]\d{9,14}$/, "Use telefone completo com DDI, somente números.")).min(1).max(2),
   birthday: z.boolean(), quote: z.boolean(), afterSale: z.boolean(),
   quoteDays: z.number().int().min(1).max(30), afterSaleDays: z.number().int().min(1).max(90),
   birthdayText: z.string().trim().min(1).max(2000),
@@ -12,10 +11,10 @@ export const configSchema = z.object({
   birthdayReplyId: z.string().max(100).nullable().optional(),
   quoteReplyId: z.string().max(100).nullable().optional(),
   afterSaleReplyId: z.string().max(100).nullable().optional(),
-}).strict()
+})
 export type PilotConfig = z.infer<typeof configSchema>
 export const defaults: PilotConfig = {
-  enabled: false, paused: true, automatic: false, phones: [], birthday: false, quote: false, afterSale: false,
+  enabled: false, paused: true, automatic: false, birthday: false, quote: false, afterSale: false,
   quoteDays: 2, afterSaleDays: 3,
   birthdayText: "Parabéns, {primeiro_nome}! 🎉 Desejamos um ótimo aniversário! Um abraço da NexuSync.",
   quoteText: "Oi, {primeiro_nome}! Ficou alguma dúvida sobre o orçamento que enviamos? Estou à disposição.",
@@ -46,7 +45,6 @@ export function afterDays(eventAt: Date, days: number) {
   next.setUTCDate(next.getUTCDate() + days)
   return atNine(next.toISOString().slice(0, 10))
 }
-export function canSend(config: PilotConfig, phone: string, now: Date, individualTest = false) {
-  const hour = localParts(now).hour
-  return config.enabled && !config.paused && config.phones.includes(phone) && (individualTest || (hour >= 9 && hour < 18))
+export function canSend(config: PilotConfig) {
+  return config.enabled && !config.paused
 }

@@ -2,6 +2,23 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { passwordPairSchema } from "../src/lib/password-policy"
 import { hasTrustedOrigin } from "../src/lib/request-origin"
+import { isAllowedUser } from "../src/lib/allowed-users"
+
+test("user access is fail-closed and matches complete emails case-insensitively", () => {
+  const previous = process.env.ALLOWED_USER_EMAILS
+  try {
+    delete process.env.ALLOWED_USER_EMAILS
+    assert.equal(isAllowedUser("owner@example.test"), false)
+    process.env.ALLOWED_USER_EMAILS = " Owner@example.test, team@example.test "
+    assert.equal(isAllowedUser("OWNER@example.test"), true)
+    assert.equal(isAllowedUser("team@example.test"), true)
+    assert.equal(isAllowedUser("notowner@example.test"), false)
+    assert.equal(isAllowedUser(null), false)
+  } finally {
+    if (previous === undefined) delete process.env.ALLOWED_USER_EMAILS
+    else process.env.ALLOWED_USER_EMAILS = previous
+  }
+})
 
 test("registration/reset accept 8 characters and require an independently confirmed matching password", () => {
   const pair = (password: string, confirmPassword = password) => passwordPairSchema.safeParse({ password, confirmPassword }).success

@@ -13,6 +13,7 @@ async function main() {
   process.env.NEXTAUTH_URL = "http://localhost:3001"
   process.env.AUTH_URL = "http://localhost:3001"
   process.env.META_SEND_ENABLED = "false"
+  process.env.ALLOWED_USER_EMAILS = "aurora@visionsync.local,horizonte@visionsync.local,estrela@visionsync.local"
   const { prisma } = await import("../src/lib/prisma")
   await promisify(execFile)(process.execPath, [path.resolve("../node_modules/prisma/build/index.js"), "db", "push", "--skip-generate"], { env: process.env, timeout: 60_000 })
   await ensureIndexes(process.env.DATABASE_URL)

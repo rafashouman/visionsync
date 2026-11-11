@@ -100,6 +100,8 @@ Mensagens: a agenda atual armazena horário e texto e a extensão apresenta avis
 
 ## Piloto interno de envios no servidor - 09/11/2026
 
+> Registro histórico: a lista de telefones e a janela obrigatória de envio foram removidas. Consulte [Envios de WhatsApp no servidor](06-piloto-whatsapp-servidor.md) para a operação atual.
+
 Adicionado conector Baileys 7.0.0-rc14 em worker Node.js separado, com tela autenticada `/dashboard/whatsapp` e até dois destinatários permitidos. Implementados QR privado, sessão e chaves Signal criptografadas no MongoDB, lease por conta, reconexão, pausa, aprovação/cancelamento de mensagens, exclusão de contato e distinção entre transmissão, entrega, leitura e resultado incerto. Falhas ambíguas e jobs interrompidos não são repetidos automaticamente.
 
 Aniversários são gerados por contato/ano; retorno de orçamento e pós-venda partem de ações explícitas de orçamento enviado e serviço concluído. As regras ficam desligadas inicialmente; a fila começa pausada e em revisão. Resposta observada cancela retorno de orçamento; pedido reconhecido de parada bloqueia o contato. Não há disparo por simples cadastro de compra nem importação completa de conversas.

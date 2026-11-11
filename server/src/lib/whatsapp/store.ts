@@ -13,6 +13,7 @@ export type Job = {
   kind: MessageKind; text: string; dueAt: Date; expiresAt: Date;
   status: "review" | "queued" | "sending" | "submitted" | "delivered" | "read" | "uncertain" | "canceled" | "expired";
   key: string; createdAt: Date; updatedAt: Date; attemptedAt?: Date; messageId?: string; reason?: string;
+  checkedAt?: Date;
   eventAt: Date; approved?: boolean;
   attachment?: Attachment;
 }
@@ -41,7 +42,7 @@ export async function putJob(db: Db, job: Omit<Job, "_id" | "createdAt" | "updat
 }
 export async function saveConfig(db: Db, userId: string, config: PilotConfig) {
   await db.collection<Connection>("wa_connections").updateOne({ _id: userId }, {
-    $set: { config: { ...config, phones: [...new Set(config.phones)] }, updatedAt: new Date() },
+    $set: { config, updatedAt: new Date() },
     $setOnInsert: { desired: false, command: randomUUID(), state: "disconnected" },
   }, { upsert: true })
 }

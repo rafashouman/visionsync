@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { BrandLogo } from "./brand-logo"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import {
@@ -62,6 +62,26 @@ export function DashNav() {
   const menuButton = useRef<HTMLButtonElement>(null)
   const { data: session } = useSession()
   const name = session?.user?.name
+  const [sendAlert, setSendAlert] = useState("")
+
+  useEffect(() => {
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    async function check() {
+      try {
+        const response = await fetch("/api/crm/whatsapp/health", { cache: "no-store" })
+        if (!response.ok) throw new Error("Falha na consulta")
+        const health: { connectionProblem: boolean; review: number; unreviewed: number } = await response.json()
+        const warnings = [health.connectionProblem ? "Conexão precisa de atenção" : "", health.unreviewed ? `${health.unreviewed} resultado(s) incerto(s)` : "", health.review ? `${health.review} aguardando aprovação` : ""].filter(Boolean)
+        if (active) setSendAlert(warnings.join(" · "))
+      } catch {
+        if (active) setSendAlert("Não foi possível verificar os envios")
+      }
+      if (active) timer = setTimeout(check, 30000)
+    }
+    if (session?.user?.id) void check()
+    return () => { active = false; clearTimeout(timer) }
+  }, [session?.user?.id])
 
   return (
     <aside className="v-card v-side">
@@ -73,6 +93,7 @@ export function DashNav() {
         {menuOpen ? <X size={18} /> : <Menu size={18} />}
         {menuOpen ? "Fechar" : "Menu"}
       </button>
+      {sendAlert && <Link href="/dashboard/whatsapp" role="status" style={{ color: "var(--wait-text)", fontSize: 12, margin: "8px 0", display: "block" }}>{sendAlert}</Link>}
       <nav id="dashboard-navigation" aria-label="Navegação principal" className={`vs-dashboard-navigation${menuOpen ? " is-open" : ""}`} onKeyDown={(event) => {
         if (event.key === "Escape" && menuOpen) { setMenuOpen(false); menuButton.current?.focus() }
       }}>

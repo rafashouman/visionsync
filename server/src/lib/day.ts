@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { dayKey } from "@/lib/dates"
-import { listReminders } from "@/lib/reminders"
-import { listCharges } from "@/lib/charges"
+import { listReminders, reminderCounts } from "@/lib/reminders"
+import { summarizeCharges, summarizeChargesDueToday } from "@/lib/charges"
 
 const DAY_MS = 86_400_000
 const BRT_OFFSET_HOURS = 3 // Brasília é UTC-3 (sem horário de verão desde 2019)
@@ -18,13 +18,15 @@ export async function buildDay(userId: string) {
   const weekAgo = new Date(start.getTime() - 6 * DAY_MS)
   const waitFrom = new Date(now.getTime() - 72 * 3600_000)
 
-  const [todayAgg, weekAgg, newContacts, totalContacts, reminders, charges, metaPending, waiting] = await Promise.all([
+  const [todayAgg, weekAgg, newContacts, totalContacts, reminders, reminderTotals, charges, dueToday, metaPending, waiting] = await Promise.all([
     prisma.purchase.aggregate({ where: { userId, purchasedAt: { gte: start } }, _count: { _all: true }, _sum: { amount: true } }),
     prisma.purchase.aggregate({ where: { userId, purchasedAt: { gte: weekAgo } }, _count: { _all: true }, _sum: { amount: true } }),
     prisma.contact.count({ where: { userId, createdAt: { gte: start } } }),
     prisma.contact.count({ where: { userId } }),
     listReminders(userId),
-    listCharges(userId, "todas"),
+    reminderCounts(userId, now),
+    summarizeCharges(userId, now),
+    summarizeChargesDueToday(userId, now),
     prisma.purchase.findMany({
       where: { userId, metaEventSent: false, purchasedAt: { gte: new Date(now.getTime() - 7 * DAY_MS) } },
       select: { metaError: true },
@@ -38,8 +40,6 @@ export async function buildDay(userId: string) {
   ])
 
   const open = reminders.reminders
-  const dueToday = charges.charges.filter((c) => c.state === "pendente" && dayKey(new Date(c.dueDate)) === dayKey(now))
-
   const meta = { pendentes: 0, falhas: 0, semPixel: 0 }
   for (const p of metaPending) {
     if (!p.metaError) meta.pendentes++
@@ -55,14 +55,14 @@ export async function buildDay(userId: string) {
     contatosNovos: newContacts,
     totalContatos: totalContacts,
     lembretes: {
-      atrasados: open.filter((r) => r.state === "atrasado").length,
-      hoje: open.filter((r) => r.state === "hoje").length,
+      atrasados: reminderTotals.atrasados,
+      hoje: reminderTotals.hoje,
       lista: open.filter((r) => r.state === "atrasado" || r.state === "hoje").slice(0, 8),
     },
     cobrancas: {
-      vencidas: charges.summary.vencidas,
-      hoje: { count: dueToday.length, total: dueToday.reduce((s, c) => s + c.amount, 0) },
-      aReceber: charges.summary.aReceber,
+      vencidas: charges.vencidas,
+      hoje: dueToday,
+      aReceber: charges.aReceber,
     },
     meta,
     aguardando: waiting.map((w) => ({ id: w.id, name: w.name, phone: w.phone, since: w.waLastAt?.toISOString() ?? null, unread: w.waUnread })),

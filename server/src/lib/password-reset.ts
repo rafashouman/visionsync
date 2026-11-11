@@ -1,10 +1,12 @@
 import { createHash, randomBytes } from "node:crypto"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/prisma"
+import { isAllowedUser } from "@/lib/allowed-users"
 
 export const resetTokenHash = (token: string) => createHash("sha256").update(token).digest("hex")
 
-export async function requestPasswordReset(email: string) {
+export async function requestPasswordReset(email: string, purpose: "reset" | "activation" = "reset") {
+  if (!isAllowedUser(email)) return
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   if (!user) return
   const token = randomBytes(32).toString("hex")
@@ -15,7 +17,7 @@ export async function requestPasswordReset(email: string) {
     url.searchParams.set("token", token)
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST", headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: process.env.AUTH_EMAIL_FROM, to: [email], subject: "Redefina sua senha do VisionSync", text: `Recebemos uma solicitação para redefinir sua senha. Acesse o link abaixo em até 30 minutos. Ele só pode ser usado uma vez.\n\n${url.href}\n\nSe não foi você, ignore este email. Sua senha permanece a mesma.` }),
+      body: JSON.stringify({ from: process.env.AUTH_EMAIL_FROM, to: [email], subject: purpose === "activation" ? "Confirme seu acesso ao VisionSync" : "Redefina sua senha do VisionSync", text: `${purpose === "activation" ? "Para confirmar seu email e definir sua senha" : "Recebemos uma solicitação para redefinir sua senha. Para continuar"}, acesse o link abaixo em até 30 minutos. Ele só pode ser usado uma vez.\n\n${url.href}\n\nSe não foi você, ignore este email. Sua senha permanece a mesma.` }),
       signal: AbortSignal.timeout(10_000),
     })
     if (!response.ok) throw new Error("Email delivery failed")
@@ -31,6 +33,8 @@ export async function resetPassword(token: string, password: string) {
   return prisma.$transaction(async tx => {
     const reset = await tx.passwordReset.findUnique({ where: { id } })
     if (!reset || reset.expiresAt <= new Date()) return false
+    const user = await tx.user.findUnique({ where: { id: reset.userId }, select: { email: true } })
+    if (!user || !isAllowedUser(user.email)) return false
     const consumed = await tx.passwordReset.deleteMany({ where: { id, expiresAt: { gt: new Date() } } })
     if (consumed.count !== 1) return false
     await tx.user.update({ where: { id: reset.userId }, data: { password: passwordHash, passwordChangedAt: new Date(), apiTokenHash: null, apiTokenExpiresAt: null, apiToken: null } })
