@@ -6,6 +6,7 @@ import Link from "next/link"
 import { AuthBackground } from "@/components/auth-background"
 import { BrandLogo } from "@/components/brand-logo"
 import { ThemePicker } from "@/components/theme-picker"
+import { AnalyticsRegistrationChoice, saveBrowserPreference, useBrowserPreference } from "@/components/analytics-consent"
 
 export default function CadastroPage() {
   const router = useRouter()
@@ -13,6 +14,10 @@ export default function CadastroPage() {
   const [email, setEmail] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [completed, setCompleted] = useState(false)
+  const [choice, setChoice] = useState<boolean | null>(null)
+  const browserPreference = useBrowserPreference()
+  const analyticsConsent = choice ?? browserPreference !== "rejected"
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -23,11 +28,18 @@ export default function CadastroPage() {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email }),
+        body: JSON.stringify({ name, email, analyticsConsent }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
         setError(d.error || "Erro ao cadastrar.")
+        return
+      }
+      try {
+        saveBrowserPreference(analyticsConsent)
+      } catch {
+        setCompleted(true)
+        setError("Cadastro realizado, mas não foi possível salvar a escolha de analytics neste navegador. Entre na conta para conferir a preferência em Configurações.")
         return
       }
       router.push("/login?cadastro=sucesso")
@@ -48,8 +60,9 @@ export default function CadastroPage() {
         <label className="auth-label" htmlFor="email">Email</label>
         <input id="email" className="auth-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
         <p className="auth-sub">Enviaremos um link para confirmar seu email e definir sua senha.</p>
-        {error && <p className="auth-error">{error}</p>}
-        <button className="auth-btn" disabled={loading}>{loading ? "Enviando..." : "Enviar link de acesso"}</button>
+        <AnalyticsRegistrationChoice value={analyticsConsent} onChange={setChoice} />
+        {error && <p role="alert" className="auth-error">{error}</p>}
+        <button className="auth-btn" disabled={loading || completed}>{loading ? "Enviando..." : "Enviar link de acesso"}</button>
         <p className="auth-foot">
           Já tem conta ou acabou de criar? <Link href="/login">Entrar</Link>
         </p>

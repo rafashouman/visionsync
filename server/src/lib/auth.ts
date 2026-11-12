@@ -33,14 +33,15 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) { token.id = user.id; token.authenticatedAt = Date.now() }
-      else if (token.id) {
-        const account = await prisma.user.findUnique({ where: { id: String(token.id) }, select: { passwordChangedAt: true } })
+      if (token.id) {
+        const account = await prisma.user.findUnique({ where: { id: String(token.id) }, select: { passwordChangedAt: true, analyticsConsent: true } })
         if (!account || (account.passwordChangedAt && account.passwordChangedAt.getTime() > Number(token.authenticatedAt || 0))) return null
+        token.analyticsConsent = account.analyticsConsent === true
       }
       return token
     },
     async session({ session, token }) {
-      if (token) session.user.id = token.id as string
+      if (token) { session.user.id = token.id as string; session.user.analyticsConsent = token.analyticsConsent === true }
       return session
     },
   },

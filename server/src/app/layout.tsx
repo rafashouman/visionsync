@@ -4,6 +4,7 @@ import { THEME_COOKIE, resolveTheme } from "@/lib/themes"
 import type { Metadata } from "next"
 import "./globals.css"
 import { AuthProvider } from "@/components/session-provider"
+import { AnalyticsConsent } from "@/components/analytics-consent"
 
 export const metadata: Metadata = {
   title: "VisionSync",
@@ -16,7 +17,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="pt-BR" data-theme={theme}>
       <body>
-        <ThemeProvider initialTheme={theme}><AuthProvider>{children}</AuthProvider></ThemeProvider>
+        <ThemeProvider initialTheme={theme}><AuthProvider>{children}<AnalyticsConsent /></AuthProvider></ThemeProvider>
       </body>
     </html>
   )

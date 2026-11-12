@@ -2,6 +2,7 @@ import { ThemePicker } from "@/components/theme-picker"
 import { MetaCard } from "@/components/meta-card"
 import { PageHeader } from "@/components/page-header"
 import { card } from "@/lib/ui"
+import { AnalyticsSettings } from "@/components/analytics-consent"
 
 export default function ConfiguracoesPage() {
   return (
@@ -10,6 +11,7 @@ export default function ConfiguracoesPage() {
 
       <section style={{ ...card, padding: 24 }} aria-label="Preferências de aparência"><ThemePicker /></section>
 
+      <AnalyticsSettings />
       <MetaCard />
     </div>
   )

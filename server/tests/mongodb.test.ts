@@ -216,10 +216,13 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
       let account: NonNullable<Awaited<ReturnType<typeof prisma.user.findUnique>>>
       try {
         delete process.env.ALLOWED_USER_EMAILS
-        const created = await register({ name: " Nova Empresa ", email: " New@Example.Test ", password: "attackerpass" })
+        const created = await register({ name: " Nova Empresa ", email: " New@Example.Test ", password: "attackerpass", analyticsConsent: true })
         assert.equal(created.status, 201)
         account = await prisma.user.findUniqueOrThrow({ where: { email: "new@example.test" } })
         assert.equal(account.password, null)
+        assert.equal(account.analyticsConsent, true)
+        assert.equal((await register({ name: "Outra", email: "new@example.test", analyticsConsent: false })).status, 201)
+        assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: account.id } })).analyticsConsent, true)
         const token = new URL(activationLink).searchParams.get("token")
         assert.ok(token)
         const { resetPassword } = await import("../src/lib/password-reset")
@@ -239,7 +242,12 @@ test("MongoDB: existing CRM relations, identities, transactions and idempotent s
         const sessionCookie = login.headers.getSetCookie().find(value => value.startsWith("authjs.session-token="))
         assert.ok(sessionCookie)
         const session = await handlers.GET(new NextRequest(`${baseUrl}/api/auth/session`, { headers: { cookie: sessionCookie.split(";")[0] } }))
-        assert.equal((await session.json()).user.email, "new@example.test")
+        const sessionData = await session.json()
+        assert.equal(sessionData.user.email, "new@example.test")
+        assert.equal(sessionData.user.analyticsConsent, true)
+        await prisma.user.update({ where: { id: account.id }, data: { analyticsConsent: false } })
+        const refreshed = await handlers.GET(new NextRequest(`${baseUrl}/api/auth/session`, { headers: { cookie: sessionCookie.split(";")[0] } }))
+        assert.equal((await refreshed.json()).user.analyticsConsent, false)
         const { POST: forgotPassword } = await import("../src/app/api/auth/forgot-password/route")
         const recover = () => forgotPassword(new NextRequest("http://localhost:3001/api/auth/forgot-password", {
           method: "POST", headers: { "Content-Type": "application/json", origin: "http://localhost:3001" }, body: JSON.stringify({ email: "new@example.test" }),

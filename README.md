@@ -81,6 +81,12 @@ npm run start --workspace @visionsync/web
 
 Se o gerenciador bloquear scripts de instalação, `db:generate` gera o cliente Prisma explicitamente. O build do plugin utiliza os binários distribuídos pelo esbuild. Não aprove scripts de pacotes desconhecidos indiscriminadamente.
 
+## Analytics nas páginas públicas
+
+O contêiner `GTM-MXB9LSL6` é carregado somente após consentimento nas páginas de login, cadastro e recuperação de acesso. A opção no cadastro vem marcada quando não há uma recusa anterior; ela é aplicada ao concluir o cadastro ou ao alterar a marcação e pode ser modificada em **Configurações → Privacidade e analytics** após entrar. Ela fica salva na conta e é sincronizada com o navegador após o login; antes do login, vale a escolha armazenada no navegador. Contas já existentes começam com analytics desativado na conta. O painel autenticado não carrega o contêiner.
+
+O GTM executa em um iframe isolado, sem acesso ao formulário ou à URL da página. Ele recebe o evento `visionsync_page_view` e a variável de camada de dados `page_path`, com apenas o caminho público aprovado, sem parâmetros. No GTM, configure uma variável de camada de dados `page_path`, um acionador de evento personalizado `visionsync_page_view` e uma tag GA4 para registrar a visualização com o caminho indicado. Desative visualizações automáticas duplicadas e não configure coleta de formulários ou dados pessoais. O iframe isolado pode limitar cookies, atribuição e recursos automáticos; valide o recebimento no contêiner e no GA4.
+
 ## Plugin Chrome
 
 ```powershell

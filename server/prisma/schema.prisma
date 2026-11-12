@@ -15,6 +15,7 @@ model User {
   apiTokenHash String?
   apiTokenExpiresAt DateTime?
   onboardingCompletedAt DateTime?
+  analyticsConsent Boolean?
   passwordChangedAt DateTime?
   password  String?
   apiToken  String? // token da extensão do Chrome
