@@ -24,7 +24,12 @@ html[data-vcrm-theme="minimal"] { --v-bg:#f3f5f8; --v-card:#ffffff; --v-field:#e
 
 /* Reserva espaço para a coluna e, em telas largas, para o painel. */
 html.vcrm-on { --vcrm-panel-width: min(340px, calc(100vw - 44px)); }
-html.vcrm-on body { padding-left: var(--vcrm-pad, 44px) !important; background: var(--v-bg); }
+html.vcrm-on body { background: var(--v-bg); }
+html.vcrm-on #app {
+  position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important;
+  left: var(--vcrm-content-offset, var(--vcrm-pad, 44px)) !important;
+  width: auto !important; height: auto !important;
+}
 
 /* ── Coluna de ícones ── */
 .vc-rail {
@@ -334,7 +339,7 @@ html.vcrm-on body { padding-left: var(--vcrm-pad, 44px) !important; background: 
 .vc-sep { width: 22px; height: 1px; margin: 6px 0; background: rgba(255, 255, 255, 0.14); }
 .vc-badge-n { position: absolute; top: 1px; right: 1px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px; font-size: 10px; line-height: 15px; font-weight: 700; text-align: center; color: var(--v-text); background: var(--v-accent); }
 @media (max-width: 700px) {
-  html.vcrm-on body { padding-left: 44px !important; }
+  html.vcrm-on { --vcrm-content-offset: 44px; }
 }
 
 /* ═══ Painel de Respostas rápidas (cópia do Hotzapp) ═══ */

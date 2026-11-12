@@ -59,7 +59,10 @@
       const ct = Contact && Contact.get && Contact.get(chat.id)
       if (ct && ct.phoneNumber) tries.push(["Contact.get.phoneNumber", widOf(ct.phoneNumber)])
     } catch {}
-    for (const mod of ["WAWebLidMigrationUtils", "WAWebApiContact", "WAWebLidPhoneMappingUtils", "WAWebLidUtils"]) {
+    for (const [n, w] of tries) {
+      if (w && digits(w.user) && (w.server === "c.us" || !w.server)) { dbg.via = (dbg.via || "") + "+" + n; return digits(w.user) }
+    }
+    for (const mod of ["WAWebLidMigrationUtils", "WAWebApiContact"]) {
       const M = req(mod)
       dbg["mod_" + mod] = !!M
       if (!M) continue

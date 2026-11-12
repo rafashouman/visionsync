@@ -95,6 +95,8 @@ npm run extension:build
 
 Na barra lateral esquerda do plugin, use **Filtros de conversas** para acessar os filtros sem manter uma faixa sobre os contatos. Em **Aparência**, escolha Vision escuro, claro ou minimalista; a mesma preferência está no popup da extensão e é independente do tema do site. Em janelas estreitas, o painel aberto fica sobre o WhatsApp e pode ser fechado para recuperar espaço.
 
+Após atualizar o plugin, recarregue-o em `chrome://extensions` e recarregue a aba do WhatsApp Web para substituir também a integração que roda na página.
+
 Alternativa: no frontend, **Plugin WhatsApp → Baixar plugin para Chrome** entrega `visionsync-extension.zip`; extraia e carregue a pasta extraída. O pacote é gerado antes do build Next.js.
 
 Para incluir seu domínio no pacote de produção:

@@ -14,7 +14,7 @@ const ROOT_ID = "vcrm-root"
 const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
 const RAIL_W = 44
-const SCRIPT_VERSION = "0.22.0"
+const SCRIPT_VERSION = "0.22.1"
 
 const state = {
   open: false,

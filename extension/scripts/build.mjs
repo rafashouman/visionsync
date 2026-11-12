@@ -13,7 +13,7 @@ if (origin) {
 }
 const icons = Object.fromEntries([16, 32, 48, 128].map(size => [String(size), `icons/icon-${size}.png`]))
 const manifest = {
-  manifest_version: 3, name: "VisionSync - CRM no WhatsApp", version: "0.22.0",
+  manifest_version: 3, name: "VisionSync - CRM no WhatsApp", version: "0.22.1",
   description: "Contatos, notas, cobranças e respostas rápidas conectados ao seu CRM.",
   permissions: ["storage", "scripting"], host_permissions: ["http://localhost:3001/*", "https://web.whatsapp.com/*", "https://*.whatsapp.net/*", "https://*.fbcdn.net/*", ...(origin ? [`${origin}/*`] : [])],
   optional_host_permissions: ["https://*/*", "http://127.0.0.1/*", "http://localhost/*"],
