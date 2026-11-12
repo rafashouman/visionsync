@@ -3,6 +3,8 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { getUserFromToken, normalizePhone } from "@/lib/crm-auth"
 import { buildContact, findContactByPhone } from "@/lib/crm"
+import { shouldCompleteContactName, usableContactName } from "@/lib/contact-name"
+import { withCountryCode } from "@/lib/phone"
 
 const schema = z.object({
   phone: z.string().min(1),
@@ -22,7 +24,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 })
   }
 
-  if (!normalizePhone(data.phone)) {
+  const phone = withCountryCode(normalizePhone(data.phone))
+  if (!/^[1-9]\d{9,14}$/.test(phone)) {
     return NextResponse.json({ error: "Telefone inválido" }, { status: 400 })
   }
 
@@ -34,10 +37,12 @@ export async function POST(req: NextRequest) {
     contact = await prisma.contact.create({
       data: {
         userId: user.id,
-        name: data.name?.trim() || "Cliente WhatsApp",
-        phone: normalizePhone(data.phone),
+        name: usableContactName(data.name) || "Cliente WhatsApp",
+        phone,
       },
     })
+  } else if (shouldCompleteContactName(contact.name, contact.phone, data.name)) {
+    contact = await prisma.contact.update({ where: { id: contact.id }, data: { name: usableContactName(data.name)! } })
   }
 
   if (data.action === "add") {

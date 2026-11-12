@@ -51,7 +51,7 @@ npm run dev
 
 `db:prepare` é uma ação explícita: inicia o replica set local quando necessário, aplica o schema e cria índices. Para um MongoDB já administrado, use `db:push` e depois `db:indexes`, após revisar o destino. `dev` apenas compila a extensão e inicia Next.js; não cria usuários, não aplica schema e não insere demonstração.
 
-Abra `http://localhost:3001`, cadastre seu email e use o link recebido para definir uma senha de pelo menos oito caracteres. Gere o token em Configurações. O comando `dev` também gera o plugin e o download disponível no painel.
+Abra `http://localhost:3001`, cadastre seu email e use o link recebido para definir uma senha de pelo menos oito caracteres. Gere o token em Plugin WhatsApp. O comando `dev` também gera o plugin e o download disponível no painel.
 
 Para começar do zero, cadastre o primeiro contato no painel ou use **Plugin WhatsApp** para instalar e conectar a extensão. Cada conta tem seus próprios dados; compartilhamento entre membros de uma equipe ainda não está disponível.
 
@@ -89,9 +89,11 @@ npm run extension:build
 
 1. Abra `chrome://extensions` e ative Modo do desenvolvedor.
 2. Clique em **Carregar sem compactação** e selecione `extension/dist`.
-3. No CRM, abra **Configurações**, gere e copie um token. Ele aparece apenas nessa geração.
+3. No CRM, abra **Plugin WhatsApp**, gere e copie um token. Ele aparece apenas nessa geração.
 4. No popup do plugin, informe a URL principal do CRM e o token; salve e teste. Se solicitado, permita acesso somente à origem do CRM.
 5. Recarregue o WhatsApp Web e abra uma conversa individual.
+
+Ao abrir uma conversa com nome e telefone disponíveis, o plugin salva o contato no CRM ou completa um nome genérico, sem substituir nomes já cadastrados.
 
 Na barra lateral esquerda do plugin, use **Filtros de conversas** para acessar os filtros sem manter uma faixa sobre os contatos. Em **Aparência**, escolha Vision escuro, claro ou minimalista; a mesma preferência está no popup da extensão e é independente do tema do site. Em janelas estreitas, o painel aberto fica sobre o WhatsApp e pode ser fechado para recuperar espaço.
 

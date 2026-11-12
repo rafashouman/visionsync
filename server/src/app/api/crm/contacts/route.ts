@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { getAuthUser, normalizePhone } from "@/lib/crm-auth"
 import { findContactByPhone } from "@/lib/crm"
 import { withCountryCode } from "@/lib/phone"
+import { shouldCompleteContactName, usableContactName } from "@/lib/contact-name"
 
 const schema = z.object({
   name: z.string().trim().min(1, "Informe o nome").max(100),
@@ -47,6 +48,9 @@ export async function POST(req: NextRequest) {
   if (!contact) {
     // Guarda no formato internacional (com 55), pro wa.me e o Meta funcionarem.
     contact = await prisma.contact.upsert({ where: { userId_phone: { userId: user.id, phone: withCountryCode(digits) } }, create: { userId: user.id, name, phone: withCountryCode(digits) }, update: {} })
+  }
+  if (shouldCompleteContactName(contact.name, contact.phone, name)) {
+    contact = await prisma.contact.update({ where: { id: contact.id }, data: { name: usableContactName(name)! } })
   }
 
   if (listId) {

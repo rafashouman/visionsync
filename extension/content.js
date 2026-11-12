@@ -272,7 +272,7 @@ function parseSequenceSteps(raw) {
   return parts.length ? parts.map((p) => ({ text: p, delaySec: 2 })) : [{ text: t, delaySec: 2 }]
 }
 
-/** Gera link para adicionar lembrete/agendamento no Google Agenda (1 clique, estilo HotZapp). */
+/** Gera link para adicionar lembrete/agendamento no Google Agenda (1 clique). */
 function googleCalendarUrl({ title, details, dueAt }) {
   const start = new Date(dueAt || Date.now() + 3600e3)
   const end = new Date(start.getTime() + 30 * 60e3)
@@ -526,8 +526,8 @@ function render() {
 
 function renderBody() {
   if (state.tab === "aparencia") return `<label for="vc-theme">Esquema de cores</label><select id="vc-theme" data-theme-select><option value="dark" ${prefs.theme === "dark" ? "selected" : ""}>Vision escuro</option><option value="light" ${prefs.theme === "light" ? "selected" : ""}>Vision claro</option><option value="minimal" ${prefs.theme === "minimal" ? "selected" : ""}>Vision minimalista</option></select><p class="vc-muted">A preferência também pode ser alterada no ícone da extensão.</p>`
-  if (state.status === "no_config") return empty("Extensão não configurada", "Clique no ícone da extensão no Chrome e informe a URL do sistema e o token (gerado em Configurações).")
-  if (state.status === "bad_token") return empty("Token inválido", "Gere um token novo em Configurações no painel web e atualize na extensão.")
+  if (state.status === "no_config") return empty("Extensão não configurada", "Clique no ícone da extensão no Chrome e informe a URL do sistema e o token (gerado em Plugin WhatsApp).")
+  if (state.status === "bad_token") return empty("Token inválido", "Gere um token novo em Plugin WhatsApp no painel web e atualize na extensão.")
   if (state.status === "offline") return empty("Sem conexão", "Confira a URL do sistema no ícone da extensão. O sistema precisa estar no ar.")
   if (state.tab === "respostas") return renderReplies()
   if (state.tab === "importar") return renderImport()
@@ -635,7 +635,7 @@ function renderConversa() {
     ${purchaseForm()}
 
     <form class="vc-card" data-form="lead-deal">
-      <div class="vc-sec first">Negócio &amp; Dados HubSpot</div>
+      <div class="vc-sec first">Negócio e dados do contato</div>
       <label class="rp-l">Oportunidade / Negócio</label>
       <div class="vc-grid2">
         <input name="dealTitle" placeholder="Ex.: Pacote Anual" maxlength="120" value="${esc((d && d.dealTitle) || "")}" />
@@ -649,7 +649,7 @@ function renderConversa() {
         <input name="nextStep" placeholder="Ex.: Enviar proposta" maxlength="200" value="${esc((d && d.nextStep) || "")}" />
         <input name="nextStepAt" type="date" value="${esc(nextStepDay)}" />
       </div>
-      <label class="rp-l">Qualificação (HubSpot)</label>
+      <label class="rp-l">Qualificação</label>
       <div class="vc-grid2">
         <select name="lifecycleStage" class="vc-select">
           ${Object.entries(LIFECYCLES).map(([k, lbl]) => `<option value="${k}" ${curLifecycle === k ? "selected" : ""}>${lbl}</option>`).join("")}
@@ -1147,7 +1147,7 @@ function replyPreview(r) {
   return r.mediaName ? `Arquivo: ${r.mediaName}` : "Anexo"
 }
 
-/** Usa uma resposta: texto, contato, sequência com delay (HotZapp) ou anexos. */
+/** Usa uma resposta: texto, contato, sequência com delay ou anexos. */
 let replyBusy = false
 const quickSendRequests = new Map()
 async function useReply(r, options = {}) {
@@ -2277,7 +2277,10 @@ async function refresh(force) {
   if (!state.replies.length && !state.lists.length) await loadShared()
   if (!phone) { state.status = "ok"; ensureBar(); return render() }
 
-  const res = await api("GET", `/api/crm/contact?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name || "")}`)
+  const named = name && /\p{L}/u.test(name) && name.trim().toLowerCase() !== "cliente whatsapp"
+  const res = named
+    ? await api("POST", "/api/crm/contact", { phone, name: name.slice(0, 100) })
+    : await api("GET", `/api/crm/contact?phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(name || "")}`)
   if (mine !== seq) return // chegou resposta velha: outra conversa já foi aberta
   if (res.status === 401) { state.status = "bad_token"; return render() }
   if (!(res.ok && res.data)) { state.status = "offline"; return render() }
@@ -2308,7 +2311,7 @@ async function refresh(force) {
   render()
 }
 
-// ── HotZapp: Abas de Filtro acima da lista de conversas (#pane-side) ─────────
+// ── Abas de Filtro acima da lista de conversas (#pane-side) ─────────
 
 const INBOX_TABS_ID = "vcrm-inbox-tabs"
 const INBOX_LIST_ID = "vcrm-inbox-list"
@@ -2483,7 +2486,7 @@ function ensureInboxTabs() {
   }
 }
 
-// ── HotZapp: Quadro Kanban Tela Cheia dentro do WhatsApp Web ─────────────────
+// ── Quadro Kanban Tela Cheia dentro do WhatsApp Web ─────────────────
 
 const KANBAN_MODAL_ID = "vcrm-kanban-modal"
 let kbSearch = ""
@@ -2567,7 +2570,7 @@ async function renderKanbanModalContent(skipFetch = false) {
     <div class="vkb-box">
       <header class="vkb-top">
         <div>
-          <b>Quadro Kanban — VisionSync &amp; HubSpot Pipeline</b>
+          <b>Quadro Kanban — VisionSync</b>
           <span class="vkb-kpis">
             <em>Contatos: <b>${f.totals.contacts}</b></em>
             <em>Em negociação: <b class="gold">${brl(f.totals.pipelineValue || 0)}</b></em>
@@ -2655,7 +2658,7 @@ async function renderKanbanModalContent(skipFetch = false) {
   })
 }
 
-// ── HotZapp: Abrir conversa sem salvar número na agenda (Click-to-Chat) ──────
+// ── Abrir conversa sem salvar número na agenda (Click-to-Chat) ──────
 
 const DIAL_MODAL_ID = "vcrm-dial-modal"
 
@@ -2701,7 +2704,7 @@ function openDialModal() {
   document.body.appendChild(m)
 }
 
-// ── HotZapp: Aviso ativo quando mensagem agendada / lembrete chega na hora ───
+// ── Aviso ativo quando mensagem agendada / lembrete chega na hora ───
 
 const DUE_ALERT_ID = "vcrm-due-alert"
 const dismissedReminders = new Set()

@@ -1,4 +1,4 @@
-/** Origem do lead e propriedades HubSpot CRM. Sem imports de servidor: a tela também usa este arquivo. */
+/** Origem do lead e propriedades do CRM. Sem imports de servidor: a tela também usa este arquivo. */
 export const SOURCES = ["anuncio", "organico", "indicacao", "outro"] as const
 export type Source = (typeof SOURCES)[number]
 

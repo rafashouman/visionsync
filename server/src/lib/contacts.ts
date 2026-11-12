@@ -4,8 +4,10 @@ import type { Prisma } from "@prisma/client"
 export async function listContacts(userId: string, q = "", cursor = "") {
   q = q.trim().slice(0, 100)
   const digits = q.replace(/\D/g, "")
+  const words = q.split(/\s+/).filter(Boolean)
   const search: Prisma.ContactWhereInput = { userId, ...(q ? { OR: [
-    { name: { contains: q, mode: "insensitive" } }, ...(digits ? [{ phone: { contains: digits } }] : []),
+    { AND: words.map(word => ({ name: { contains: word, mode: "insensitive" } })) },
+    ...(!/[^\d\s()+.\-]/.test(q) && digits ? [{ phone: { contains: digits } }] : []),
   ] } : {}) }
   // A foreign/invalid cursor cannot reveal or select another account's data.
   const anchor = cursor ? await prisma.contact.findFirst({ where: { id: cursor, ...search }, select: { id: true, lastActivityAt: true } }) : null

@@ -11,7 +11,7 @@ export function ToolsBoard() {
   const [text, setText] = useState("")
   const [err, setErr] = useState<string | null>(null)
 
-  // Gerador de Link Personalizado + Botão Flutuante (HotZapp / HubSpot Lead Capture)
+  // Gerador de Link Personalizado + Botão Flutuante
   const [myPhone, setMyPhone] = useState("")
   const [welcomeMsg, setWelcomeMsg] = useState("Olá! Vim pelo site e gostaria de mais informações.")
   const [btnLabel, setBtnLabel] = useState("Falar no WhatsApp")
@@ -50,7 +50,7 @@ export function ToolsBoard() {
 
   return (
     <>
-      <PageHeader title="Ferramentas" subtitle="Atalhos úteis, captura de leads estilo HubSpot/HotZapp e exportação de dados." />
+      <PageHeader title="Ferramentas" subtitle="Atalhos úteis, captura de contatos e exportação de dados." />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 16 }}>
         <div style={{ ...card, padding: 22 }}>

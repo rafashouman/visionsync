@@ -31,7 +31,7 @@ const PLAYBOOKS: {
   steps: SeqStep[]
 }[] = [
   {
-    name: "Boas-vindas + Qualificação (HubSpot)",
+    name: "Boas-vindas + Qualificação",
     category: "QUALIFICAÇÃO",
     shortcut: "boasvindas",
     description: "Recepciona o lead pelo primeiro nome, gera conexão imediata e faz a pergunta de qualificação.",
@@ -42,7 +42,7 @@ const PLAYBOOKS: {
     ],
   },
   {
-    name: "Recuperação de Orçamento (Follow-up HotZapp)",
+    name: "Recuperação de Orçamento",
     category: "FOLLOW-UP",
     shortcut: "followup",
     description: "Roteiro em 3 mensagens curtas para destravar clientes que pararam de responder após o preço.",
@@ -165,7 +165,7 @@ export function AutomationsBoard() {
     <>
       <PageHeader
         title="Mensagens Automáticas & Sequências (Roteiros)"
-        subtitle="Crie fluxos de mensagens enviadas em sequência com intervalo automático (HotZapp) e Playbooks de conversão (HubSpot)."
+        subtitle="Crie sequências de mensagens e use roteiros de atendimento prontos."
         actions={
           <button onClick={() => setShowBuilder((v) => !v)} style={btn}>
             <Plus size={15} style={{ verticalAlign: -2, marginRight: 5 }} />
@@ -253,7 +253,7 @@ export function AutomationsBoard() {
       <div style={{ ...card, padding: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
           <Sparkles size={18} style={{ color: "var(--vred)" }} />
-          <h2 style={{ margin: 0, fontSize: 16, color: "var(--strong)" }}>Playbooks Prontos (HubSpot + HotZapp)</h2>
+          <h2 style={{ margin: 0, fontSize: 16, color: "var(--strong)" }}>Roteiros prontos</h2>
         </div>
         <p style={helper}>
           Instale com 1 clique roteiros validados de vendas. Depois, no WhatsApp Web, basta clicar no chip da sequência na barra inferior ou digitar <code>;atalho</code> para disparar todas as mensagens automaticamente!

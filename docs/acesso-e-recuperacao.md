@@ -30,7 +30,7 @@ SMTP_FROM="email@seu-dominio.com"
 
 Use uma caixa postal existente da Hostinger e sua senha SMTP; normalmente o remetente deve ser a própria caixa ou um endereço autorizado pelo provedor. A porta 587 exige STARTTLS; a 465 usa TLS direto. A hospedagem do aplicativo precisa permitir conexões SMTP de saída. As variáveis substituem `RESEND_API_KEY` e `AUTH_EMAIL_FROM` para os dois fluxos. Configure-as no ambiente privado do processo do servidor e reinicie-o; não coloque a senha no código nem a compartilhe. Sem configuração completa, cadastro e recuperação ficam indisponíveis. Não são exibidos links de recuperação nos logs ou respostas da API.
 
-O link expira em 30 minutos e só funciona uma vez. O banco armazena apenas o hash do token. A redefinição exige duas senhas iguais de pelo menos 8 caracteres e invalida as sessões anteriores, os demais links de recuperação e o token do plugin. Após redefinir, entre novamente e gere outro token da extensão em Configurações.
+O link expira em 30 minutos e só funciona uma vez. O banco armazena apenas o hash do token. A redefinição exige duas senhas iguais de pelo menos 8 caracteres e invalida as sessões anteriores, os demais links de recuperação e o token do plugin. Após redefinir, entre novamente e gere outro token da extensão em Plugin WhatsApp.
 
 ## Fluxos para conferir após publicar
 

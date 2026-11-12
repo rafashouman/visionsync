@@ -34,7 +34,7 @@ const GROUPS: { title: string; items: Item[] }[] = [
     items: [
       { label: "Respostas rápidas", icon: Zap, href: "/dashboard/respostas" },
       { label: "Mensagens automáticas", icon: Bot, href: "/dashboard/automacoes" },
-      { label: "Envios no servidor", icon: Zap, href: "/dashboard/whatsapp" },
+      { label: "Fila e envios", icon: Zap, href: "/dashboard/whatsapp#fila" },
     ],
   },
   {
@@ -111,7 +111,7 @@ export function DashNav() {
                 </span>
               )
             }
-            const active = pathname.startsWith(it.href)
+            const active = pathname.startsWith(it.href.split("#")[0])
             return (
               <Link key={it.label} href={it.href} className={`v-nav${active ? " on" : ""}`} aria-current={active ? "page" : undefined} onClick={() => { if (menuOpen) { setMenuOpen(false); menuButton.current?.focus() } }}>
                 <Icon size={18} />

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma"
 import { normalizePhone } from "@/lib/crm-auth"
 import { findContactByPhone } from "@/lib/crm"
 import { withCountryCode } from "@/lib/phone"
+import { shouldCompleteContactName, usableContactName } from "@/lib/contact-name"
 import { randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 
@@ -77,14 +78,14 @@ export async function recordPurchaseByPhone(
       update: {},
       create: {
         userId,
-        name: data.name?.trim() || "Cliente WhatsApp",
+        name: usableContactName(data.name) || "Cliente WhatsApp",
         phone: withCountryCode(normalizePhone(data.phone)),
       },
     })
-  } else if (data.name?.trim() && (contact.name === "Cliente WhatsApp" || !contact.name)) {
+  } else if (shouldCompleteContactName(contact.name, contact.phone, data.name)) {
     contact = await prisma.contact.update({
       where: { id: contact.id },
-      data: { name: data.name.trim() },
+      data: { name: usableContactName(data.name)! },
     })
   }
 

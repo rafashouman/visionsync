@@ -63,7 +63,8 @@ export function ContactsBoard({ initial, initialQuery = "" }: { initial?: { item
     <PageHeader title="Contatos" subtitle="Cada conversa tem uma história. Mantenha tudo por perto." actions={<button style={btn} onClick={() => setAdding(!adding)}><Plus size={16} /> Novo contato</button>} />
     <div style={{ ...card, padding: 20 }}>
       <label className="vs-search"><Search size={18} /><input aria-label="Buscar contato" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busque por nome ou telefone" style={{ ...field, flex: 1 }} /></label>
-      <p className="v-sub">Busca nos contatos da sua conta. Resultados em páginas de 20 contatos.</p>
+      <p className="v-sub">Busque pelo nome completo, partes do nome ou número com DDD. Resultados em páginas de 20 contatos.</p>
+      {query && <button type="button" className="vs-contact-clear" onClick={() => setQuery("")}>Limpar busca</button>}
     </div>
     {error && <p role="alert" className="vs-error">{error}</p>}
     {adding && <form onSubmit={create} style={{ ...card, padding: 24 }} className="vs-contact-form">
@@ -73,7 +74,7 @@ export function ContactsBoard({ initial, initialQuery = "" }: { initial?: { item
     </form>}
     <div style={{ ...card, padding: 8 }} aria-busy={loading}>
       {loading ? <p className="vs-empty">Carregando contatos…</p> : !contacts.length ? <div className="vs-empty"><Users size={32} /><h2>{query ? "Nenhum contato encontrado" : "Sua próxima conversa começa aqui"}</h2><p>{query ? "Tente outro nome ou número." : "Adicione um contato ou importe pelo plugin no WhatsApp."}</p></div> : contacts.map(c => <div key={c.id} className="vs-contact-row">
-        <button className="vs-contact-name" onClick={() => setSelected(c.id)}><ContactAvatar name={c.name} src={c.avatarUrl} /><span><strong>{c.name}</strong><small>+{c.phone}</small></span></button>
+        <button className="vs-contact-name" onClick={() => setSelected(c.id)}><ContactAvatar name={c.name} src={c.avatarUrl} /><span><strong>{c.name === c.phone || c.name === "Cliente WhatsApp" ? "Contato sem nome" : c.name}</strong><small>+{c.phone}</small></span></button>
         <a aria-label={`Conversar com ${c.name} no WhatsApp`} href={`https://wa.me/${c.phone}`} target="_blank" rel="noreferrer" className="vs-wa"><MessageSquare size={17} /><span>Conversar</span></a>
       </div>)}
     </div>

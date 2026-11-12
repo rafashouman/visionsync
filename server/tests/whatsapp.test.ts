@@ -75,6 +75,7 @@ test("durable pilot queue with fake transport only", async t => {
       assert.equal((await listWhatsappHistory(db, userId, { q: "única" })).jobs.length, 1)
       assert.equal((await listWhatsappHistory(db, userId, { q: "ÚNICA" })).jobs.length, 1)
       assert.equal((await listWhatsappHistory(db, userId, { q: "5511999999999", status: "review" })).jobs.length, 30)
+      assert.equal((await listWhatsappHistory(db, userId, { q: "+55 (11) 99999-9999", status: "review" })).jobs.length, 30)
       const health = await whatsappQueueHealth(db, userId, now)
       assert.equal(health.review, 37); assert.equal(health.queued, 38); assert.equal(health.overdue, 38)
       const first = await db.collection<Job>("wa_jobs").findOne({ userId })

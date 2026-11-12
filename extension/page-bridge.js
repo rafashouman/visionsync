@@ -299,7 +299,7 @@
       dbg.achouChat = !!chat
       if (chat) return triggerOpenChat(chat, dbg)
 
-      // Se a conversa ainda não existe na lista, tenta criar/abrir pelo número (Click-to-Chat do HotZapp)
+      // Se a conversa ainda não existe na lista, tenta criar/abrir pelo número (link direto)
       const digits = String(key || "").replace(/\D/g, "")
       if (digits.length >= 10) {
         const fullDigits = digits.length <= 11 && !digits.startsWith("55") ? "55" + digits : digits

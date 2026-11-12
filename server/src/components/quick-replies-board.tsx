@@ -451,7 +451,7 @@ function EditorModal({
             <button onClick={() => setKind("SEQUENCE")} style={{ ...tile, width: "100%", marginTop: 10, flexDirection: "row", justifyContent: "flex-start", gap: 10, cursor: "pointer" }}>
               <span style={{ color: "var(--vred)", display: "grid" }}><TypeIcon kind="SEQUENCE" size={20} /></span>
               <span style={{ textAlign: "left", color: "var(--text)" }}>
-                <b style={{ fontSize: 13 }}>Sequência de mensagens (Roteiro HotZapp)</b>
+                <b style={{ fontSize: 13 }}>Sequência de mensagens</b>
                 <br /><span style={{ fontSize: 11, color: "var(--muted)" }}>Várias mensagens enviadas automaticamente com intervalo em segundos entre elas.</span>
               </span>
             </button>

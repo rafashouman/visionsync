@@ -35,7 +35,7 @@ save.addEventListener("click", async () => {
     }
     const previous = await chrome.storage.local.get(["apiUrl", "token"])
     const secret = token.value.trim() || (previous.apiUrl === apiUrl ? previous.token : "")
-    if (!/^crm_[a-f0-9]{48}$/.test(String(secret))) throw new Error("Gere um token nas Configurações e cole aqui.")
+    if (!/^crm_[a-f0-9]{48}$/.test(String(secret))) throw new Error("Gere um token em Plugin WhatsApp e cole aqui.")
     await chrome.storage.local.set({ apiUrl, token: secret })
     await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" })
     token.value = ""

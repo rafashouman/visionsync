@@ -27,10 +27,11 @@ export async function listWhatsappHistory(db: Db, userId: string, params: Histor
   if (params.kind) clauses.push({ kind: params.kind })
   if (params.q) {
     const term = params.q.toLowerCase()
+    const digits = term.replace(/\D/g, "")
     clauses.push({ $expr: { $or: ["name", "phone", "text"].map(field => ({
       $gte: [{ $indexOfCP: [{ $toLower: [..."ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ"].reduce<object>((input, letter) => ({
         $replaceAll: { input, find: letter, replacement: letter.toLowerCase() },
-      }), { $ifNull: [`$${field}`, ""] }) }, term] }, 0],
+      }), { $ifNull: [`$${field}`, ""] }) }, field === "phone" && digits && !/[^\d\s()+.\-]/.test(term) ? digits : term] }, 0],
     })) } })
   }
   if (params.cursor) {

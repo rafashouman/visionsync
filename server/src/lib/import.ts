@@ -2,6 +2,7 @@ import { randomUUID } from "crypto"
 import { prisma } from "@/lib/prisma"
 import { normalizePhone } from "@/lib/crm-auth"
 import { withCountryCode } from "@/lib/phone"
+import { shouldCompleteContactName, usableContactName } from "@/lib/contact-name"
 
 /** Um contato lido do WhatsApp pela extensão. */
 export type ImportContact = {
@@ -26,7 +27,6 @@ export type ImportResult = {
 }
 
 const DEFAULT_COLOR = "#3b82f6"
-const GENERIC = new Set(["", "cliente whatsapp"])
 
 /**
  * Importa etiquetas (viram listas) e contatos (com o estado da conversa).
@@ -115,7 +115,7 @@ export async function importFromWhatsApp(
     if (found) {
       contactId = found.id
       const data: Record<string, unknown> = {}
-      if (GENERIC.has(found.name.trim().toLowerCase()) && name) data.name = name
+      if (shouldCompleteContactName(found.name, found.phone, name)) data.name = usableContactName(name)
       if (found.waLastAt?.getTime() !== lastAt?.getTime()) data.waLastAt = lastAt
       if (found.waLastFromMe !== c.lastFromMe) data.waLastFromMe = c.lastFromMe
       if (found.waUnread !== unread) data.waUnread = unread
@@ -128,7 +128,7 @@ export async function importFromWhatsApp(
       toCreate.push({
         id: contactId,
         userId,
-        name: name || digits,
+        name: usableContactName(name) || digits,
         phone: withCountryCode(digits),
         lastActivityAt: lastAt ?? now,
         waLastAt: lastAt,

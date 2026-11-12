@@ -96,7 +96,7 @@ export function AgendaBoard() {
     <>
       <PageHeader
         title="Agenda & Mensagens Agendadas"
-        subtitle="Calendário de compromissos, retornos do HubSpot e mensagens pré-agendadas do HotZapp com exportação para o Google Agenda."
+        subtitle="Calendário de compromissos, retornos e mensagens agendadas, com exportação para o Google Agenda."
         actions={
           <button onClick={() => setShowForm((v) => !v)} style={btn}>
             <BellPlus size={15} style={{ verticalAlign: -2, marginRight: 5 }} />
@@ -141,7 +141,7 @@ export function AgendaBoard() {
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {([
           ["todos", "Todos os compromissos"],
-          ["mensagens", "Com mensagem agendada (HotZapp)"],
+          ["mensagens", "Com mensagem agendada"],
           ["lembretes", "Apenas lembretes de retorno"],
         ] as const).map(([id, lbl]) => (
           <button
@@ -335,7 +335,7 @@ function ScheduleForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         </div>
       </div>
 
-      <label style={label}>Mensagem agendada para enviar no WhatsApp (opcional — estilo HotZapp)</label>
+      <label style={label}>Mensagem agendada para enviar no WhatsApp (opcional)</label>
       <textarea
         value={scheduledMessage}
         onChange={(e) => setScheduledMessage(e.target.value)}

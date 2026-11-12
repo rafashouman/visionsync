@@ -60,7 +60,7 @@ export function ContactDrawer({
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>("dados")
 
-  // campos de "Dados do lead & Negócio (HubSpot)"
+  // campos de "Dados do lead e negócio"
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [source, setSource] = useState("")
@@ -258,7 +258,7 @@ export function ContactDrawer({
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <div style={{ ...inner, padding: 12, marginBottom: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.7, color: "var(--accent)", marginBottom: 8 }}>
-                Oportunidade / Negócio (HubSpot Pipeline)
+                Oportunidade / Negócio
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 8 }}>
                 <div>
@@ -290,7 +290,7 @@ export function ContactDrawer({
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div>
-                <label htmlFor={`${uid}-field-6`} style={label}>Ciclo de Vida (HubSpot)</label>
+                <label htmlFor={`${uid}-field-6`} style={label}>Ciclo de vida</label>
                 <select id={`${uid}-field-6`} value={lifecycleStage} onChange={(e) => setLifecycleStage(e.target.value)} style={field}>
                   {LIFECYCLE_STAGES.map((lc) => (
                     <option key={lc} value={lc}>{LIFECYCLE_LABEL[lc]}</option>
