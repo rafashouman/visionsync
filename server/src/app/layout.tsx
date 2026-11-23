@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { ThemeProvider } from "@/components/theme-provider"
 import { THEME_COOKIE, resolveTheme } from "@/lib/themes"
+import { brandSrc } from "@/lib/brand"
 import type { Metadata } from "next"
 import "./globals.css"
 import { AuthProvider } from "@/components/session-provider"
@@ -8,7 +9,7 @@ import { AnalyticsConsent } from "@/components/analytics-consent"
 
 export const metadata: Metadata = {
   title: "VisionSync",
-  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/brand/icon.png", type: "image/png", sizes: "150x150" }], apple: "/brand/apple-touch-icon.png" },
+  icons: { icon: [{ url: brandSrc("/favicon.ico"), sizes: "any" }, { url: brandSrc("/brand/icon.png"), type: "image/png", sizes: "150x150" }], apple: brandSrc("/brand/apple-touch-icon.png") },
   description: "Relacionamentos, oportunidades e vendas conectados ao WhatsApp.",
 }
 
