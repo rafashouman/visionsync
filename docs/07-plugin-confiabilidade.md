@@ -1,5 +1,7 @@
 # Plugin 0.21.0 — modos de envio e diagnóstico
 
+> Histórico da versão 0.21.0. Na versão 0.24.0, a criação/edição abre sobre o WhatsApp e áudios/notas de voz usam a sessão do navegador. A prévia é local; o envio imediato não passa pela fila do servidor. Consulte [Biblioteca de respostas](08-biblioteca-respostas.md) para o fluxo atual. Os comportamentos de conector descritos abaixo permanecem pertinentes aos agendamentos do servidor e ao histórico.
+
 Primeira etapa do plano de aperfeiçoamento do plugin. Não inclui os futuros fluxos condicionais, workspace de equipes ou assistente de IA.
 
 ## Comportamento para quem atende

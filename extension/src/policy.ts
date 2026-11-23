@@ -2,12 +2,19 @@ export type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
 export type ApiMessage = { type: "api"; method: Method; path: string; body?: unknown; requestKey?: string }
 export type FileMessage = { type: "file"; path: string }
 export type Config = { apiUrl: string; token: string }
-export type UploadMessage = { type: "upload-reply"; name: string; mediaType: "IMAGE" | "AUDIO"; mime: string; base64: string; caption?: string; asVoiceNote?: boolean; category?: string; shortcut?: string }
+export type UploadMessage = { type: "upload-reply"; name: string; filename?: string; mediaType: "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT"; mime: string; base64: string; caption?: string; asVoiceNote?: boolean; category?: string; shortcut?: string }
+const UPLOAD_MIMES: Record<UploadMessage["mediaType"], readonly string[]> = {
+  AUDIO: ["audio/ogg", "audio/ogg; codecs=opus", "audio/mpeg"],
+  IMAGE: ["image/jpeg", "image/png", "image/webp"],
+  VIDEO: ["video/mp4", "video/3gpp"],
+  DOCUMENT: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/csv", "text/plain", "application/zip"],
+}
 export function allowedUpload(value: unknown): value is UploadMessage {
   if (!value || typeof value !== "object") return false
   const m = value as Record<string, unknown>
   return m.type === "upload-reply" && typeof m.name === "string" && m.name.length > 0 && m.name.length <= 80 &&
-    ["IMAGE", "AUDIO"].includes(String(m.mediaType)) && ["image/jpeg", "image/png", "image/webp", "audio/ogg", "audio/ogg; codecs=opus", "audio/mpeg"].includes(String(m.mime)) &&
+    Object.hasOwn(UPLOAD_MIMES, String(m.mediaType)) && UPLOAD_MIMES[m.mediaType as UploadMessage["mediaType"]].includes(String(m.mime)) &&
+    (m.filename === undefined || (typeof m.filename === "string" && m.filename.length > 0 && m.filename.length <= 180 && !/[\\/\x00]/.test(m.filename))) &&
     typeof m.base64 === "string" && m.base64.length <= 5592408 && /^[A-Za-z0-9+/]+={0,2}$/.test(m.base64) &&
     (m.caption === undefined || (typeof m.caption === "string" && m.caption.length <= 1024)) && (m.asVoiceNote === undefined || typeof m.asVoiceNote === "boolean") &&
     (m.category === undefined || (typeof m.category === "string" && m.category.length <= 40)) && (m.shortcut === undefined || (typeof m.shortcut === "string" && m.shortcut.length <= 30))

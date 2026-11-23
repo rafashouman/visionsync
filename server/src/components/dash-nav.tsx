@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { BrandLogo } from "./brand-logo"
+import { ThemeSwitcher } from "./theme-picker"
 import { useEffect, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
@@ -85,9 +86,10 @@ export function DashNav() {
 
   return (
     <aside className="v-card v-side">
-      <Link href="/dashboard" className="v-brand">
-        <BrandLogo />
-      </Link>
+      <div className="vs-nav-brand">
+        <Link href="/dashboard" className="v-brand"><BrandLogo /></Link>
+        <span className="vs-brand-family">Conexões que movem seu negócio <b>por NexuSync</b></span>
+      </div>
 
       <button ref={menuButton} type="button" className="vs-menu-toggle" aria-expanded={menuOpen} aria-controls="dashboard-navigation" onClick={() => setMenuOpen(!menuOpen)}>
         {menuOpen ? <X size={18} /> : <Menu size={18} />}
@@ -123,6 +125,7 @@ export function DashNav() {
       ))}
 
       </nav>
+      <div className="vs-nav-appearance"><ThemeSwitcher /></div>
       <div className="v-me">
         <span className="v-av">{initials(name)}</span>
         <div className="who">

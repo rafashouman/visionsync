@@ -1,5 +1,6 @@
 import { safeServerHealth, safeTabHealth } from "./diagnostics"
 import { allowedAvatarUrl, allowedMessage, allowedUpload, normalizeApiUrl, type ApiMessage, type FileMessage, type UploadMessage } from "./policy"
+import { isPluginTheme } from "./themes"
 
 type Result = { ok: boolean; status: number; error?: string; data?: unknown; base64?: string; mime?: string }
 function preferenceTheme(value: unknown): unknown {
@@ -9,7 +10,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.vcrmPrefs) return
   const previous = preferenceTheme(changes.vcrmPrefs.oldValue)
   const theme = preferenceTheme(changes.vcrmPrefs.newValue)
-  if (theme === previous || typeof theme !== "string" || !["dark", "light", "minimal"].includes(theme)) return
+  if (theme === previous || !isPluginTheme(theme)) return
   void chrome.tabs.query({ url: "https://web.whatsapp.com/*" }).then(tabs =>
     Promise.allSettled(tabs.flatMap(tab => tab.id === undefined ? [] : [chrome.tabs.sendMessage(tab.id, { type: "theme", theme })]))
   ).catch(error => console.error("Não foi possível atualizar o tema nas abas do WhatsApp.", error))
@@ -21,7 +22,7 @@ async function uploadReply(msg: UploadMessage): Promise<Result> {
   if (bytes.length > 4 * 1024 * 1024) return { ok: false, status: 413 }
   const ext = msg.mime.includes("ogg") ? "ogg" : msg.mime === "audio/mpeg" ? "mp3" : msg.mime === "image/png" ? "png" : msg.mime === "image/webp" ? "webp" : "jpg"
   const form = new FormData()
-  form.set("file", new Blob([bytes], { type: msg.mime }), `mensagem.${ext}`)
+  form.set("file", new Blob([bytes], { type: msg.mime }), msg.filename || `mensagem.${ext}`)
   form.set("type", msg.mediaType); form.set("name", msg.name); form.set("favorite", "true")
   form.set("asVoiceNote", String(!!msg.asVoiceNote)); form.set("text", msg.caption || "")
   if (msg.category) form.set("category", msg.category)
@@ -80,7 +81,7 @@ async function repairTabs() {
   const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" })
   const results = await Promise.allSettled(tabs.filter(tab => tab.id !== undefined).map(async tab => {
     const target = { tabId: tab.id! }
-    await chrome.scripting.executeScript({ target, world: "MAIN", files: ["page-bridge.js"] })
+    await chrome.scripting.executeScript({ target, world: "MAIN", files: ["vendor/wa-adapter.js", "page-bridge.js"] })
     await chrome.scripting.insertCSS({ target, files: ["panel.css"] })
     await chrome.scripting.executeScript({ target, files: ["content.js"] })
   }))

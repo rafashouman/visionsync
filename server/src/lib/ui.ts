@@ -9,7 +9,7 @@ import type { CSSProperties } from "react"
 export const card: CSSProperties = {
   background: "var(--card-surface)",
   border: "1px solid var(--line)",
-  borderRadius: 18,
+  borderRadius: "var(--radius-card)",
   boxShadow: "var(--card-shadow)",
 }
 
@@ -17,7 +17,7 @@ export const card: CSSProperties = {
 export const inner: CSSProperties = {
   background: "var(--inner)",
   border: "1px solid var(--soft)",
-  borderRadius: 12,
+  borderRadius: "var(--radius-inner)",
 }
 
 export const field: CSSProperties = { padding: "8px 10px", fontSize: 13, width: "100%" }
@@ -31,7 +31,7 @@ export const btn: CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
-  boxShadow: "0 0 16px var(--glow)",
+  boxShadow: "var(--button-shadow)",
 }
 export const ghost: CSSProperties = {
   background: "transparent",
@@ -43,7 +43,7 @@ export const ghost: CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 }
-export const btnSm: CSSProperties = { ...btn, padding: "5px 11px", fontSize: 12, boxShadow: "0 0 12px var(--glow)" }
+export const btnSm: CSSProperties = { ...btn, padding: "5px 11px", fontSize: 12 }
 export const ghostSm: CSSProperties = { ...ghost, padding: "5px 11px", fontSize: 12 }
 
 /** Texto clicável (sem caixa). */

@@ -2,13 +2,16 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { DEFAULT_THEME, THEMES, isTheme, resolveTheme } from "../src/lib/themes"
 
-test("three Vision themes are offered, with migration of older preferences", () => {
+test("VisionSync, contrast and light are offered, preserving older preferences", () => {
   assert.equal(THEMES.length, 3)
   assert.equal(new Set(THEMES.map(t => t.id)).size, 3)
   assert.equal(DEFAULT_THEME, "dark")
   assert.equal(resolveTheme("dark-original"), "dark")
   assert.equal(resolveTheme("dark-minimal"), "dark")
-  assert.equal(resolveTheme("light-minimal"), "minimal")
+  assert.deepEqual(THEMES.map(theme => theme.id), ["dark", "contrast", "light"])
+  assert.equal(resolveTheme("light-minimal"), "light")
+  assert.equal(resolveTheme("minimal"), "light")
+  assert.equal(resolveTheme("nexusync"), "contrast")
   for (const theme of THEMES) { assert.equal(isTheme(theme.id), true); assert.equal(resolveTheme(theme.id), theme.id) }
   for (const invalid of [undefined, null, "", "system", "<script>", {}, "LIGHT"]) {
     assert.equal(isTheme(invalid), false); assert.equal(resolveTheme(invalid), DEFAULT_THEME)

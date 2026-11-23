@@ -14,7 +14,7 @@ const ROOT_ID = "vcrm-root"
 const BAR_ID = "vcrm-bar"
 const POP_ID = "vcrm-pop"
 const RAIL_W = 44
-const SCRIPT_VERSION = "0.22.1"
+const SCRIPT_VERSION = "0.24.0"
 
 const state = {
   open: false,
@@ -35,7 +35,7 @@ const state = {
 }
 
 const SEND_LABELS = {
-  blocked: "Revise o rascunho atual", preparing: "Preparando resposta", prepared: "Preparado para revisão", requested: "Envio solicitado ao WhatsApp",
+  blocked: "Revise o rascunho atual", preparing: "Preparando resposta", composing: "Digitando…", recording: "Gravando áudio…", prepared: "Preparado para revisão", requested: "Envio solicitado ao WhatsApp",
   review: "Aguardando aprovação no servidor", queued: "Na fila do servidor", sending: "Transmitindo pelo servidor",
   submitted: "Transmitido pelo servidor", delivered: "Entregue", read: "Lida", uncertain: "Resultado incerto",
   canceled: "Envio cancelado", expired: "Envio expirado", failed: "Não foi possível concluir",
@@ -49,8 +49,8 @@ function sendState(status, detail = "", jobId = null, phone = status === "prepar
 }
 function renderSendFeedback() {
   if (sendFeedback.status === "idle") return ""
-  if (sendFeedback.phone && sendFeedback.phone !== state.phone) return '<div class="vc-send-card"><b>Última ação em outra conversa</b><small>Abra a conversa original para acompanhar o estado, ou confira a fila no site.</small><button class="vc-link" data-act="server-queue">Abrir fila no site</button></div>'
-  return `<div class="vc-send-card" role="status" aria-live="polite" data-send-state="${esc(sendFeedback.status)}"><b>${esc(SEND_LABELS[sendFeedback.status] || "Estado indisponível")}</b><small>${esc(sendFeedback.detail)}</small>${sendFeedback.jobId ? '<button class="vc-link" data-act="send-status">Atualizar estado</button><button class="vc-link" data-act="server-queue">Abrir fila no site</button>' : ""}${lastQuickKey ? '<button class="vc-link" data-act="new-server-send">Preparar outro envio</button>' : ""}</div>`
+  if (sendFeedback.phone && sendFeedback.phone !== state.phone) return '<div class="vc-send-card"><b>Última ação em outra conversa</b><small>Abra a conversa original para conferir o resultado.</small></div>'
+  return `<div class="vc-send-card" role="status" aria-live="polite" data-send-state="${esc(sendFeedback.status)}"><b>${esc(SEND_LABELS[sendFeedback.status] || "Estado indisponível")}</b><small>${esc(sendFeedback.detail)}</small>${sendFeedback.jobId ? '<button class="vc-link" data-act="send-status">Atualizar estado</button><button class="vc-link" data-act="server-queue">Abrir fila no site</button>' : ""}${lastQuickKey ? '<button class="vc-link" data-act="new-browser-send">Preparar outro envio</button>' : ""}</div>`
 }
 let jobCheckBusy = false
 async function refreshSendStatus() {
@@ -109,6 +109,9 @@ function handleExtensionError(error) {
 }
 function invalidateExtension(silent = false) {
   if (extensionLife.expired) return
+  for (const requestId of activePresence) document.dispatchEvent?.(new CustomEvent("vcrm-v3-req", { detail: JSON.stringify({ id: ++bridgeSeq, kind: "presence", arg: { action: "stop", requestId } }) }))
+  closeVoicePreview()
+  closeReplyEditor(false)
   extensionLife.expired = true
   extensionLife.abort?.abort()
   for (const cancel of [...extensionLife.pending]) cancel()
@@ -120,7 +123,7 @@ function invalidateExtension(silent = false) {
     const banner = document.createElement("div")
     banner.id = "vcrm-reload-notice"
     banner.setAttribute("role", "alert")
-    banner.textContent = "VisionSync foi atualizado. Recarregue esta aba do WhatsApp Web para reativar os botões. Seu rascunho não foi enviado."
+    banner.textContent = "VisionSync foi atualizado. Recarregue esta aba do WhatsApp Web para reativar os botões. Confira a conversa antes de repetir um envio."
     document.body.appendChild(banner)
   } catch {}
 }
@@ -303,19 +306,29 @@ function getActivePhone() {
 // Pede à página (page-bridge.js) a conversa aberta. Devolve {phone, name, dbg} ou null.
 let bridgeSeq = 0
 function askBridge(kind = "chat", timeoutMs = 1200, arg = null) {
+  if (extensionLife.expired) return Promise.resolve(null)
   return new Promise((resolve) => {
     const id = ++bridgeSeq
+    let settled = false, t = null
+    const finish = value => {
+      if (settled) return
+      settled = true
+      document.removeEventListener("vcrm-v3-res", done)
+      extensionLife.pending.delete(cancel)
+      if (t) cancelLater(t)
+      resolve(value)
+    }
+    const cancel = () => finish(null)
     const done = (ev) => {
       let d = null
       try { d = JSON.parse(ev.detail) } catch {}
       if (!d || d.id !== id) return
-      document.removeEventListener("vcrm-v2-res", done)
-      cancelLater(t)
-      resolve(d)
+      finish(d)
     }
-    const t = later(() => { document.removeEventListener("vcrm-v2-res", done); resolve(null) }, timeoutMs)
-    listenGlobal(document, "vcrm-v2-res", done)
-    document.dispatchEvent(new CustomEvent("vcrm-v2-req", { detail: JSON.stringify({ id, kind, arg }) }))
+    extensionLife.pending.add(cancel)
+    t = later(() => finish(null), timeoutMs)
+    listenGlobal(document, "vcrm-v3-res", done)
+    try { document.dispatchEvent(new CustomEvent("vcrm-v3-req", { detail: JSON.stringify({ id, kind, arg }) })) } catch { finish(null) }
   })
 }
 
@@ -413,13 +426,14 @@ function ensureRoot() {
   root.addEventListener("submit", guardedEvent(onSubmit), true)
   root.addEventListener("input", onInput)
   root.addEventListener("change", guardedEvent(onMediaUpload))
+  root.addEventListener("keydown", onReplyEditorKeydown)
   document.body.appendChild(root)
   document.documentElement.classList.add("vcrm-on")
   return root
 }
 
 function applyLayout() {
-  document.documentElement.style.setProperty("--vcrm-pad", state.open ? `calc(${RAIL_W}px + var(--vcrm-panel-width))` : `${RAIL_W}px`)
+  document.documentElement.style.setProperty("--vcrm-pad", state.open && !rp.form ? `calc(${RAIL_W}px + var(--vcrm-panel-width))` : `${RAIL_W}px`)
 }
 
 function toast(msg) {
@@ -439,19 +453,21 @@ function mediaPicker(id) {
     <p class="vc-muted vc-tiny">Lembrete no navegador: avisa no horário e precisa da sua ação. Para execução automática, use Envios no servidor no site.</p><label class="vc-upload">Anexar arquivo do computador<input type="file" data-upload-picker="${id}" accept=".ogg,.mp3,.jpg,.jpeg,.png,.webp" /></label><small>Até 4 MB. Para áudio, deixe o campo de texto vazio.</small>`
 }
 let mediaUploadCount = 0
+const REPLY_MEDIA = ["AUDIO", "IMAGE", "VIDEO", "DOCUMENT"]
+const REPLY_FILE_TYPES = { ogg: ["AUDIO", "audio/ogg"], mp3: ["AUDIO", "audio/mpeg"], png: ["IMAGE", "image/png"], jpg: ["IMAGE", "image/jpeg"], jpeg: ["IMAGE", "image/jpeg"], webp: ["IMAGE", "image/webp"], mp4: ["VIDEO", "video/mp4"], "3gp": ["VIDEO", "video/3gpp"], pdf: ["DOCUMENT", "application/pdf"], doc: ["DOCUMENT", "application/msword"], docx: ["DOCUMENT", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], xls: ["DOCUMENT", "application/vnd.ms-excel"], xlsx: ["DOCUMENT", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], ppt: ["DOCUMENT", "application/vnd.ms-powerpoint"], pptx: ["DOCUMENT", "application/vnd.openxmlformats-officedocument.presentationml.presentation"], csv: ["DOCUMENT", "text/csv"], txt: ["DOCUMENT", "text/plain"], zip: ["DOCUMENT", "application/zip"] }
 async function uploadReplyFile(file, options = {}) {
   if (!file?.size || file.size > 4 * 1024 * 1024) throw new Error("Escolha um arquivo de até 4 MB.")
   const ext = file.name.split(".").pop().toLowerCase()
-  const mime = { ogg: "audio/ogg", mp3: "audio/mpeg", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" }[ext]
-  if (!mime) throw new Error("Use áudio OGG/MP3 ou imagem PNG/JPEG/WebP.")
-  const mediaType = mime.startsWith("audio/") ? "AUDIO" : "IMAGE"
+  const rule = REPLY_FILE_TYPES[ext]
+  if (!rule) throw new Error("Use OGG/MP3, PNG/JPEG/WebP, MP4/3GP ou um documento PDF/Office/TXT/CSV/ZIP.")
+  const [mediaType, mime] = rule
   if (options.type && options.type !== mediaType) throw new Error("O arquivo não corresponde ao tipo selecionado.")
   mediaUploadCount++
   try {
   const bytes = new Uint8Array(await file.arrayBuffer())
   let binary = ""
   for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  const result = await runtimeMessage({ type: "upload-reply", name: (options.name || file.name).slice(0, 80), mediaType, mime, base64: btoa(binary), caption: mediaType === "IMAGE" ? (options.text || "").slice(0, 1024) : "", asVoiceNote: !!options.asVoiceNote, category: options.category || "", shortcut: options.shortcut || "" })
+  const result = await runtimeMessage({ type: "upload-reply", name: (options.name || file.name).slice(0, 80), filename: file.name.slice(0, 180), mediaType, mime, base64: btoa(binary), caption: mediaType !== "AUDIO" ? (options.text || "").slice(0, 1024) : "", asVoiceNote: mediaType === "AUDIO" && !!options.asVoiceNote, category: options.category || "", shortcut: options.shortcut || "" })
   if (!result.ok) throw new Error(result.data?.error || (extensionLife.expired ? "Extension context invalidated" : "Não foi possível salvar o arquivo. Confira a conexão."))
   state.replies = [...state.replies.filter(r => r.id !== result.data.id), result.data]
   ensureBar()
@@ -475,7 +491,7 @@ async function onMediaUpload(event) {
 
 function render() {
   const root = ensureRoot()
-  if (state.open && state.tab === "respostas" && rp.form && root.querySelector('form[data-form="rpform"] input[name="replyFile"]')?.files?.length) return
+  root.dataset.replyEditor = rp.form ? "true" : "false"
   applyLayout()
   ensureHeaderBar()
   // Coluna fina, só ícones (como a do Hotzapp), com uma linha separando o grupo da conversa do resto
@@ -491,7 +507,6 @@ function render() {
   // porque a tela se redesenha sozinha de vez em quando (nada do que você digita pode sumir).
   let keep = null
   if (rp.form) {
-    syncReplyForm()
     const a = document.activeElement
     if (a && root.contains(a) && a.name) keep = { name: a.name, s: a.selectionStart, e: a.selectionEnd }
   }
@@ -516,6 +531,7 @@ function render() {
       </header>
       <div class="vc-body"><div class="vc-send-feedback">${renderSendFeedback()}</div>${renderBody()}</div>
     </section>` : ""}
+    ${rp.form ? `<div class="vc-editor-backdrop"><section class="vc-reply-dialog" role="dialog" aria-modal="true" aria-labelledby="vcrm-reply-title"><header class="vc-head"><h2 id="vcrm-reply-title">${rp.form.mode === "edit" ? "Editar resposta rápida" : "Nova resposta rápida"}</h2><button type="button" class="vc-x" data-rp-act="cancel" aria-label="Fechar editor">${icon("x", 18)}</button></header><div class="vc-editor-body">${renderReplyForm()}</div></section></div>` : ""}
     ${state.toast ? `<div class="vc-toast">${esc(state.toast)}</div>` : ""}
   `
   if (keep) {
@@ -525,7 +541,7 @@ function render() {
 }
 
 function renderBody() {
-  if (state.tab === "aparencia") return `<label for="vc-theme">Esquema de cores</label><select id="vc-theme" data-theme-select><option value="dark" ${prefs.theme === "dark" ? "selected" : ""}>Vision escuro</option><option value="light" ${prefs.theme === "light" ? "selected" : ""}>Vision claro</option><option value="minimal" ${prefs.theme === "minimal" ? "selected" : ""}>Vision minimalista</option></select><p class="vc-muted">A preferência também pode ser alterada no ícone da extensão.</p>`
+  if (state.tab === "aparencia") return `<div class="vc-appearance-preview" aria-hidden="true"><i></i><span><b></b><i></i><i></i><em></em></span></div><label for="vc-theme" class="vc-sec">Seu ambiente</label><select id="vc-theme" data-theme-select><option value="dark" ${prefs.theme === "dark" ? "selected" : ""}>VisionSync</option><option value="contrast" ${prefs.theme === "contrast" ? "selected" : ""}>Contraste</option><option value="light" ${prefs.theme === "light" ? "selected" : ""}>Claro</option></select><p class="vc-muted">O mesmo estilo no painel, nos atalhos e nas janelas do VisionSync. Sua escolha fica salva neste navegador.</p><p class="vc-hint">Você também pode trocar o tema no ícone da extensão.</p>`
   if (state.status === "no_config") return empty("Extensão não configurada", "Clique no ícone da extensão no Chrome e informe a URL do sistema e o token (gerado em Plugin WhatsApp).")
   if (state.status === "bad_token") return empty("Token inválido", "Gere um token novo em Plugin WhatsApp no painel web e atualize na extensão.")
   if (state.status === "offline") return empty("Sem conexão", "Confira a URL do sistema no ícone da extensão. O sistema precisa estar no ar.")
@@ -895,7 +911,7 @@ function matchReplies(q) {
 
 // ── Aba: Respostas rápidas (cópia do painel do Hotzapp, tudo dentro da conversa) ──
 
-const rp = { form: null, prefsOpen: false, msg: "" }
+const rp = { form: null, prefsOpen: false, msg: "", saving: false }
 const catName = (r) => r.category || "Sem categoria"
 const VAR_CHIPS = [["{primeiro_nome}", "Primeiro nome"], ["{nome_completo}", "Nome completo"], ["{saudacao}", "Saudação"], ["{seu_nome}", "Seu nome"], ["{telefone}", "Telefone"], ["{data_de_hoje}", "Data de hoje"], ["{hora_agora}", "Hora agora"]]
 
@@ -919,9 +935,32 @@ function openReplyForm(init) {
   state.open = true
   state.tab = "respostas"
   const baseSteps = init && init.type === "SEQUENCE" ? parseSequenceSteps(init.text) : [{ text: (init && init.text) || "", delaySec: 2 }, { text: "", delaySec: 3 }]
-  rp.form = { mode: "new", type: "TEXT", id: null, name: "", category: "", shortcut: "", text: "", contactName: "", contactPhone: "", steps: baseSteps, ...init }
+  rp.form = { mode: "new", type: "TEXT", id: null, name: "", category: "", shortcut: "", text: "", contactName: "", contactPhone: "", asVoiceNote: true, file: null, targetPhone: state.phone, steps: baseSteps, ...init }
   rp.msg = ""
   render()
+  later(() => document.querySelector?.('#vcrm-reply-name')?.focus(), 0)
+}
+
+function closeReplyEditor(restore = true) {
+  if (!rp.form) return
+  if (restore && rp.saving) return toast("Aguarde a resposta terminar de salvar.")
+  rp.form = null; rp.msg = ""
+  if (restore && !extensionLife.expired) { render(); document.querySelector?.('#vcrm-root [data-rp-act="new"]')?.focus() }
+}
+function trapDialogFocus(event, dialog) {
+  if (event.key !== "Tab") return
+  const items = [...dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), audio[controls], [tabindex="0"]')].filter(el => el.getClientRects().length)
+  const first = items[0], last = items[items.length - 1]
+  if (!first) { event.preventDefault(); return }
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { event.preventDefault(); last.focus() }
+  if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) { event.preventDefault(); first.focus() }
+}
+function onReplyEditorKeydown(event) {
+  const dialog = event.target.closest?.('.vc-reply-dialog')
+  if (!dialog) return
+  event.stopPropagation()
+  if (event.key === "Escape") { event.preventDefault(); closeReplyEditor() }
+  else trapDialogFocus(event, dialog)
 }
 
 /** Guarda o que foi digitado, pra não se perder ao trocar de tipo. */
@@ -930,6 +969,10 @@ function syncReplyForm() {
   if (!form || !rp.form) return
   const fd = new FormData(form)
   for (const k of ["name", "category", "shortcut", "text", "contactName", "contactPhone"]) if (fd.has(k)) rp.form[k] = String(fd.get(k))
+  const file = form.querySelector('input[name="replyFile"]')?.files?.[0]
+  if (file) rp.form.file = file
+  const voice = form.querySelector('input[name="asVoiceNote"]')
+  if (voice) rp.form.asVoiceNote = voice.checked
   if (rp.form.type === "SEQUENCE") {
     const texts = [...form.querySelectorAll("[data-seq-text]")].map((el) => el.value)
     const delays = [...form.querySelectorAll("[data-seq-delay]")].map((el) => Math.max(0, Math.min(60, parseInt(el.value, 10) || 0)))
@@ -964,7 +1007,7 @@ function rpCard(r) {
 }
 
 function renderReplies() {
-  if (rp.form) return renderReplyForm()
+  if (rp.form) return ""
   const q = state.repliesQuery.trim().toLowerCase()
   const list = state.replies.filter((r) => !q || r.name.toLowerCase().includes(q) || (r.shortcut || "").toLowerCase().includes(q) || (r.text || "").toLowerCase().includes(q) || catName(r).toLowerCase().includes(q))
   const groups = new Map()
@@ -998,28 +1041,28 @@ function renderReplyForm() {
   const isEdit = f.mode === "edit"
   const cats = [...new Set(state.replies.map((r) => r.category).filter(Boolean))]
   const steps = Array.isArray(f.steps) && f.steps.length ? f.steps : parseSequenceSteps(f.text)
-  const typeLabel = ({ TEXT: "mensagem de texto", AUDIO: "mensagem de áudio", IMAGE: "imagem", CONTACT: "cartão de contato", SEQUENCE: "sequência de mensagens" })[f.type] || "resposta rápida"
-  return `<form class="vc-card rp-form" data-form="rpform">
+  const typeLabel = ({ TEXT: "mensagem de texto", AUDIO: "mensagem de áudio", IMAGE: "imagem", VIDEO: "vídeo", DOCUMENT: "documento", CONTACT: "cartão de contato", SEQUENCE: "sequência de mensagens" })[f.type] || "resposta rápida"
+  return `<form class="vc-card rp-form" data-form="rpform"><fieldset ${rp.saving ? "disabled" : ""}>
     <div class="vc-sec first">${isEdit ? "Editar" : "Nova"} ${typeLabel}</div>
     ${isEdit ? "" : `<div class="rp-seg wide">
         <button type="button" data-rp-act="type-TEXT" class="${f.type === "TEXT" ? "on" : ""}">Texto</button>
         <button type="button" data-rp-act="type-SEQUENCE" class="${f.type === "SEQUENCE" ? "on" : ""}">Sequência</button>
-        <button type="button" data-rp-act="type-AUDIO" class="${f.type === "AUDIO" ? "on" : ""}">Áudio</button><button type="button" data-rp-act="type-IMAGE" class="${f.type === "IMAGE" ? "on" : ""}">Imagem</button><button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button>
+        <button type="button" data-rp-act="type-AUDIO" class="${f.type === "AUDIO" ? "on" : ""}">Áudio</button><button type="button" data-rp-act="type-IMAGE" class="${f.type === "IMAGE" ? "on" : ""}">Imagem</button><button type="button" data-rp-act="type-VIDEO" class="${f.type === "VIDEO" ? "on" : ""}">Vídeo</button><button type="button" data-rp-act="type-DOCUMENT" class="${f.type === "DOCUMENT" ? "on" : ""}">Documento</button><button type="button" data-rp-act="type-CONTACT" class="${f.type === "CONTACT" ? "on" : ""}">Contato</button>
       </div>
-      <p class="vc-hint">Texto, áudio e imagem podem ser criados aqui. Vídeo e documento: use o painel web.</p>`}
-    <label class="rp-l">Nome <b>*</b></label>
-    <input name="name" maxlength="80" placeholder="Como você vai achar essa mensagem depois" value="${esc(f.name)}" required />
-    <label class="rp-l">Categoria <span>· só você vê (opcional)</span></label>
-    <input name="category" maxlength="40" list="rp-cats" placeholder="Ex.: Orçamentos" value="${esc(f.category)}" />
+      <p class="vc-hint">Crie e use suas respostas aqui, sem sair da conversa.</p>`}
+    <label class="rp-l" for="vcrm-reply-name">Nome <b>*</b></label>
+    <input id="vcrm-reply-name" name="name" maxlength="80" placeholder="Como você vai achar essa mensagem depois" value="${esc(f.name)}" required />
+    <label class="rp-l" for="vcrm-reply-category">Categoria <span>· só você vê (opcional)</span></label>
+    <input id="vcrm-reply-category" name="category" maxlength="40" list="rp-cats" placeholder="Ex.: Orçamentos" value="${esc(f.category)}" />
     <datalist id="rp-cats">${cats.map((c) => `<option value="${esc(c)}"></option>`).join("")}</datalist>
     ${f.type === "TEXT" ? `
-      <label class="rp-l">Mensagem <b>*</b></label>
-      <textarea name="text" rows="6" maxlength="4096" placeholder="Digite sua mensagem aqui…" required>${esc(f.text)}</textarea>
+      <label class="rp-l" for="vcrm-reply-text">Mensagem <b>*</b></label>
+      <textarea id="vcrm-reply-text" name="text" rows="6" maxlength="4096" placeholder="Digite sua mensagem aqui…" required>${esc(f.text)}</textarea>
       <div class="rp-vars">${VAR_CHIPS.map(([t, l]) => `<button type="button" data-rp-var="${esc(t)}">${esc(l)}</button>`).join("")}</div>
       <p class="vc-hint">Clique pra inserir. O cliente recebe tudo preenchido.</p>`
-    : ["AUDIO", "IMAGE"].includes(f.type) ? `
-      <label class="rp-l">Arquivo (até 4 MB)</label><input type="file" name="replyFile" accept="${f.type === "AUDIO" ? ".ogg,.mp3" : ".png,.jpg,.jpeg,.webp"}" required />
-      ${f.type === "IMAGE" ? `<label>Legenda</label><textarea name="text" maxlength="1024">${esc(f.text || "")}</textarea>` : `<label><input type="checkbox" name="asVoiceNote" /> Nota de voz (OGG/Opus e conector do servidor)</label>`}
+    : REPLY_MEDIA.includes(f.type) ? `
+      <label class="rp-l" for="vcrm-reply-file">Arquivo (até 4 MB)</label>${isEdit ? `<p class="vc-hint">${esc(f.mediaName || "Arquivo salvo na biblioteca")} · Para trocar o arquivo, crie outra resposta.</p>` : `<input id="vcrm-reply-file" type="file" name="replyFile" accept="${({ AUDIO: ".ogg,.mp3", IMAGE: ".png,.jpg,.jpeg,.webp", VIDEO: ".mp4,.3gp", DOCUMENT: ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.zip" })[f.type]}" ${f.file ? "" : "required"} /><p class="vc-hint" data-reply-selected>${esc(f.file?.name || "")}</p>`}
+      ${f.type !== "AUDIO" ? `<label for="vcrm-reply-text">Legenda</label><textarea id="vcrm-reply-text" name="text" maxlength="1024">${esc(f.text || "")}</textarea>` : `<label class="vc-check"><input type="checkbox" name="asVoiceNote" ${f.asVoiceNote ? "checked" : ""} /> <span>Enviar como nota de voz no WhatsApp Web</span></label><p class="vc-hint">Usa a sessão já aberta nesta aba. Não precisa vincular o celular ao envio pelo servidor.</p>`}
     ` : f.type === "SEQUENCE" ? `
       <label class="rp-l">Passos do roteiro / sequência <b>*</b></label>
       ${steps.map((st, idx) => `
@@ -1036,23 +1079,24 @@ function renderReplyForm() {
       `).join("")}
       <button type="button" class="vc-ghost" data-rp-act="seq-add">${icon("plus", 14)} Adicionar passo na sequência</button>`
     : `
-      <label class="rp-l">Nome do contato <b>*</b></label>
-      <input name="contactName" maxlength="100" value="${esc(f.contactName)}" required />
-      <label class="rp-l">Telefone do contato <b>*</b></label>
-      <input name="contactPhone" maxlength="30" placeholder="11 99999-8888" value="${esc(f.contactPhone)}" required />`}
-    <label class="rp-l">Atalho <span>· opcional, digite ; e o atalho na conversa</span></label>
-    <input name="shortcut" maxlength="30" placeholder="ex.: pix" value="${esc(f.shortcut)}" />
-    <div class="vc-note">${esc(rp.msg)}</div>
-    <div class="vc-actions"><button type="button" class="vc-ghost" data-rp-act="cancel">Cancelar</button><button class="vc-btn">Salvar</button></div>
-  </form>`
+      <label class="rp-l" for="vcrm-reply-contact-name">Nome do contato <b>*</b></label>
+      <input id="vcrm-reply-contact-name" name="contactName" maxlength="100" value="${esc(f.contactName)}" required />
+      <label class="rp-l" for="vcrm-reply-contact-phone">Telefone do contato <b>*</b></label>
+      <input id="vcrm-reply-contact-phone" name="contactPhone" maxlength="30" placeholder="11 99999-8888" value="${esc(f.contactPhone)}" required />`}
+    <label class="rp-l" for="vcrm-reply-shortcut">Atalho <span>· opcional, digite ; e o atalho na conversa</span></label>
+    <input id="vcrm-reply-shortcut" name="shortcut" maxlength="30" placeholder="ex.: pix" value="${esc(f.shortcut)}" />
+    <div class="vc-note" role="status">${esc(rp.msg)}</div>
+    <div class="vc-actions"><button type="button" class="vc-ghost" data-rp-act="cancel" ${rp.saving ? "disabled" : ""}>Cancelar</button><button class="vc-ghost" ${rp.saving ? "disabled" : ""}>Salvar</button><button class="vc-btn" data-reply-send="true" ${rp.saving || !state.phone ? "disabled" : ""}>Salvar e enviar agora</button></div>
+  </fieldset></form>`
 }
 
 async function onReplyAction(act, id, btn) {
   const r = id ? state.replies.find((x) => x.id === id) : null
   if (act === "mode-review" || act === "mode-send") { prefs.sendDirect = act === "mode-send"; savePrefs(); ensureBar(); return render() }
   if (act === "sync") return syncReplyLibrary(true)
-  if (act === "new") return window.open(state.apiUrl + "/dashboard/respostas?nova=1", "_blank", "noopener,noreferrer")
-  if (act === "cancel") { rp.form = null; rp.msg = ""; return render() }
+  if (act === "new") return openReplyForm()
+  if (act === "cancel") return closeReplyEditor()
+  if (rp.saving) return
   if (act === "compact") { prefs.compact = !prefs.compact; savePrefs(); return render() }
   if (act === "prefs") { rp.prefsOpen = !rp.prefsOpen; return render() }
   if (act === "style-icon" || act === "style-color") { prefs.chipStyle = act === "style-icon" ? "icon" : "color"; savePrefs(); ensureBar(); return render() }
@@ -1063,7 +1107,7 @@ async function onReplyAction(act, id, btn) {
     savePrefs()
     return render()
   }
-  if (act.startsWith("type-")) { syncReplyForm(); rp.form.type = act.slice(5); return render() }
+  if (act.startsWith("type-")) { syncReplyForm(); rp.form.type = act.slice(5); rp.form.file = null; return render() }
   if (act === "seq-add") {
     syncReplyForm()
     rp.form.steps = [...(rp.form.steps || []), { text: "", delaySec: 2 }]
@@ -1092,8 +1136,7 @@ async function onReplyAction(act, id, btn) {
     return toast("Duplicada.")
   }
   if (act === "edit") {
-    if (r.type !== "TEXT" && r.type !== "CONTACT" && r.type !== "SEQUENCE") return toast("Pra editar áudio, imagem, vídeo ou documento, use o painel web.")
-    return openReplyForm({ mode: "edit", id: r.id, type: r.type, name: r.name, category: r.category || "", shortcut: r.shortcut || "", text: r.text || "", contactName: r.contactName || "", contactPhone: r.contactPhone || "", steps: r.type === "SEQUENCE" ? parseSequenceSteps(r.text) : undefined })
+    return openReplyForm({ mode: "edit", id: r.id, type: r.type, name: r.name, category: r.category || "", shortcut: r.shortcut || "", text: r.text || "", contactName: r.contactName || "", contactPhone: r.contactPhone || "", asVoiceNote: !!r.asVoiceNote, mediaName: r.mediaName, steps: r.type === "SEQUENCE" ? parseSequenceSteps(r.text) : undefined })
   }
   if (act === "del") {
     if (!confirm(`Excluir a resposta "${r.name}"?`)) return
@@ -1105,39 +1148,47 @@ async function onReplyAction(act, id, btn) {
   }
 }
 
-async function submitReplyForm(form) {
+async function submitReplyForm(form, sendNow = false) {
+  if (rp.saving || !rp.form) return
   if (mediaUploadCount) return toast("Aguarde o arquivo terminar de carregar.")
   syncReplyForm()
   const f = rp.form
-  if (["AUDIO", "IMAGE"].includes(f.type)) {
-    try {
-      const file = form.querySelector('input[name="replyFile"]')?.files?.[0]
-      await uploadReplyFile(file, { name: f.name.trim(), category: f.category.trim(), shortcut: f.shortcut.trim(), type: f.type, text: f.text, asVoiceNote: !!form.querySelector('input[name="asVoiceNote"]')?.checked })
-      rp.form = null; render(); toast("Resposta rápida salva nos favoritos.")
-    } catch (error) { handleExtensionError(error); if (!extensionLife.expired) toast(error.message) }
-    return
-  }
   const body = { name: f.name.trim(), category: f.category.trim() || null, shortcut: f.shortcut.trim() || null }
+  if (!body.name) { rp.msg = "Dê um nome para a resposta."; return render() }
   if (f.type === "TEXT") body.text = f.text
   else if (f.type === "SEQUENCE") {
     const cleanSteps = (f.steps || []).map((s) => ({ text: String(s.text || "").trim(), delaySec: Math.max(0, Math.min(60, Number(s.delaySec) || 0)), ...(s.quickReplyId ? { quickReplyId: s.quickReplyId } : {}) })).filter((s) => s.text || s.quickReplyId)
     if (!cleanSteps.length) { rp.msg = "Escreva pelo menos 1 passo na sequência."; return render() }
     body.text = JSON.stringify(cleanSteps)
   }
-  else { body.contactName = f.contactName; body.contactPhone = f.contactPhone }
+  else if (f.type === "CONTACT") { body.contactName = f.contactName; body.contactPhone = f.contactPhone }
+  else if (f.type === "AUDIO") body.asVoiceNote = !!f.asVoiceNote
+  else if (REPLY_MEDIA.includes(f.type)) body.text = f.text || ""
   if (f.mode === "new") body.type = f.type
+  rp.saving = true
   rp.msg = "Salvando…"
   render()
-  const res = f.mode === "edit"
-    ? await api("PATCH", `/api/crm/quick-replies/${f.id}`, body)
-    : await api("POST", "/api/crm/quick-replies", body)
-  if (!res.ok) { rp.msg = (res.data && res.data.error) || "Não consegui salvar."; return render() }
-  rp.form = null
-  rp.msg = ""
-  await loadReplies()
-  ensureBar()
-  render()
-  toast("Resposta salva.")
+  try {
+    let saved
+    if (f.mode === "new" && REPLY_MEDIA.includes(f.type)) {
+      saved = await uploadReplyFile(f.file, { ...body, type: f.type, text: f.text, category: body.category || "", shortcut: body.shortcut || "" })
+    } else {
+      const res = f.mode === "edit" ? await api("PATCH", `/api/crm/quick-replies/${f.id}`, body) : await api("POST", "/api/crm/quick-replies", body)
+      if (!res.ok || !res.data?.id) throw new Error(res.data?.error || "Não consegui salvar.")
+      saved = res.data
+    }
+    state.replies = [...state.replies.filter(r => r.id !== saved.id), saved]
+    await loadReplies()
+    rp.saving = false
+    closeReplyEditor()
+    ensureBar()
+    toast("Resposta salva.")
+    if (sendNow) {
+      if (!f.targetPhone || f.targetPhone !== state.phone) return toast("Resposta salva. A conversa mudou; escolha a resposta na conversa desejada para enviar.")
+      return await useReply(saved, { sendDirect: true, expectedPhone: f.targetPhone })
+    }
+  } catch (error) { handleExtensionError(error); if (!extensionLife.expired && rp.form === f) { rp.msg = error.message || "Não consegui salvar." } }
+  finally { rp.saving = false; if (rp.form === f && !extensionLife.expired) render() }
 }
 
 function replyPreview(r) {
@@ -1150,25 +1201,93 @@ function replyPreview(r) {
 /** Usa uma resposta: texto, contato, sequência com delay ou anexos. */
 let replyBusy = false
 const quickSendRequests = new Map()
+const activePresence = new Set()
+let voiceDraft = null
+function closeVoicePreview() {
+  if (!voiceDraft) return
+  if (voiceDraft.url) URL.revokeObjectURL(voiceDraft.url)
+  voiceDraft = null
+  document.getElementById?.("vcrm-voice-preview")?.remove()
+}
+function openVoicePreview(reply, file, phone) {
+  closeVoicePreview()
+  const bytes = Uint8Array.from(atob(file.base64), c => c.charCodeAt(0))
+  const url = URL.createObjectURL(new Blob([bytes], { type: file.mime || reply.mediaMime || "audio/ogg" }))
+  voiceDraft = { reply, file, phone, url }
+  const host = document.createElement("div")
+  host.id = "vcrm-voice-preview"
+  host.className = "vc-editor-backdrop"
+  host.innerHTML = `<section class="vc-audio-dialog" role="dialog" aria-modal="true" aria-labelledby="vcrm-audio-title"><h2 id="vcrm-audio-title">Revisar áudio</h2><p>${esc(reply.name)}</p><audio controls src="${esc(url)}"></audio><p>Ouça antes de enviar nesta conversa. Nenhum agendamento foi criado.</p><div class="vc-actions"><button type="button" data-voice-cancel>Cancelar</button><button type="button" data-voice-send>Enviar agora</button></div></section>`
+  host.addEventListener("click", guardedEvent(async event => {
+    if (event.target.closest("[data-voice-cancel]")) { closeVoicePreview(); getComposer()?.focus(); return }
+    if (event.target.closest("[data-voice-send]")) {
+      const draft = voiceDraft
+      closeVoicePreview()
+      if (draft) await useReply(draft.reply, { sendDirect: true, expectedPhone: draft.phone, preparedFile: draft.file })
+    }
+  }))
+  host.addEventListener("keydown", event => {
+    event.stopPropagation()
+    if (event.key === "Escape") { event.preventDefault(); closeVoicePreview(); getComposer()?.focus() }
+    else trapDialogFocus(event, host)
+  })
+  document.body.appendChild(host)
+  host.querySelector("[data-voice-send]").focus()
+}
+function replyPause(delay) {
+  if (extensionLife.expired) return Promise.resolve(false)
+  return new Promise(resolve => {
+    let timer
+    const cancel = () => { if (timer) cancelLater(timer); extensionLife.pending.delete(cancel); resolve(false) }
+    extensionLife.pending.add(cancel)
+    timer = later(() => { extensionLife.pending.delete(cancel); resolve(true) }, delay)
+  })
+}
+async function presenceBeforeSend(action, phone) {
+  if (extensionLife.expired || state.phone !== phone) return false
+  const requestId = crypto.randomUUID()
+  let started = false
+  try {
+    const chat = await resolveChat()
+    if (extensionLife.expired || state.phone !== phone || chat.phone !== phone) return false
+    activePresence.add(requestId)
+    const result = await askBridge("presence", 2000, { action, phone, key: chat.key || "", requestId })
+    if (result?.canceled) return false
+    started = !!result?.ok
+    if (started) {
+      sendState(action, "Preparando a resposta na conversa atual.")
+      for (let elapsed = 0; elapsed < 3000; elapsed += 200) {
+        if (extensionLife.expired || state.phone !== phone || !await replyPause(200)) return false
+      }
+    }
+    return !extensionLife.expired && state.phone === phone && (await resolveChat()).phone === phone
+  } finally {
+    activePresence.delete(requestId)
+    if (!extensionLife.expired) await askBridge("presence", 1500, { action: "stop", requestId })
+    if (started && !extensionLife.expired && state.phone !== phone) sendState("canceled", "A conversa mudou. Nenhum novo envio foi solicitado.")
+  }
+}
 async function useReply(r, options = {}) {
   if (extensionLife.expired) return false
+  if (options.expectedPhone && options.expectedPhone !== state.phone) { sendState("canceled", "A conversa mudou. Escolha a resposta novamente na conversa desejada."); return false }
+  if (voiceDraft) { toast("Revise ou feche o áudio preparado antes de escolher outra resposta."); return false }
   if (replyBusy) { toast("Aguarde a resposta atual terminar."); return false }
   replyBusy = true
-  if (!(r.type === "AUDIO" && r.asVoiceNote)) lastQuickKey = null
+  if (r.type !== "AUDIO") lastQuickKey = null
   try {
     const direct = options.sendDirect ?? !!prefs.sendDirect
-    if (direct && !(r.type === "AUDIO" && r.asVoiceNote) && String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) {
+    if (direct && String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) {
       sendState("blocked", "Há texto no campo de mensagem. Revise, envie ou limpe o rascunho antes de usar Enviar agora. Nada foi acrescentado.")
       toast("Revise o texto já digitado antes de solicitar outro envio.")
       return false
     }
     sendState("preparing", "Nenhuma confirmação de entrega ainda.")
-    return await runReply(r, direct)
+    return await runReply(r, direct, options)
   }
   catch (error) { handleExtensionError(error); if (!extensionLife.expired) { sendState("failed", "Confira a conversa antes de tentar novamente."); toast("Não foi possível preparar a resposta. Tente novamente.") }; return false }
   finally { if (sendFeedback.status === "preparing") sendState("failed", "Operação interrompida. Confira a conversa antes de tentar novamente."); replyBusy = false }
 }
-async function runReply(r, direct = !!prefs.sendDirect) {
+async function runReply(r, direct = !!prefs.sendDirect, options = {}) {
   if (extensionLife.expired) return false
   if (r.type === "SEQUENCE") {
     if (!direct) {
@@ -1179,13 +1298,13 @@ async function runReply(r, direct = !!prefs.sendDirect) {
     const steps = parseSequenceSteps(r.text).filter((s) => s.text.trim() || s.quickReplyId)
     if (!steps.length) { sendState("failed", "Esta sequência está vazia."); return false }
     if (!getComposer()) { sendState("failed", "Abra uma conversa para iniciar o roteiro."); return false }
-    api("POST", `/api/crm/quick-replies/${r.id}/use`)
+    if (r.id) api("POST", `/api/crm/quick-replies/${r.id}/use`)
     const phone = state.phone
     for (let i = 0; i < steps.length; i++) {
       const st = steps[i]
       if (st.delaySec > 0) {
         toast(`Sequência "${r.name}": passo ${i + 1}/${steps.length} em ${st.delaySec}s…`)
-        await new Promise((res) => later(res, st.delaySec * 1000))
+        if (!await replyPause(st.delaySec * 1000)) return false
       } else {
         toast(`Sequência "${r.name}": enviando passo ${i + 1}/${steps.length}…`)
       }
@@ -1202,8 +1321,11 @@ async function runReply(r, direct = !!prefs.sendDirect) {
         return false
       }
       const msg = renderVariables(st.text)
+      if (!await presenceBeforeSend("composing", phone)) { sendState("canceled", "A conversa mudou. A sequência parou."); return false }
+      if (String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) { sendState("blocked", "Há um rascunho no campo. A sequência parou."); return false }
       if (!insertIntoComposer(msg)) { sendState("failed", "A sequência parou na preparação de um passo. Confira a conversa antes de repetir."); return false }
       await new Promise((res) => later(res, 180))
+      if (!composerMatches(msg)) { sendState("blocked", "O rascunho mudou. A sequência parou sem enviar esta mensagem."); return false }
       if (!await clickSend(2000, false, phone)) { sendState("uncertain", "Sequência interrompida. Confira a conversa antes de repetir."); toast("Não confirmei o envio. Sequência interrompida."); return false }
       await new Promise((res) => later(res, 350))
     }
@@ -1214,12 +1336,15 @@ async function runReply(r, direct = !!prefs.sendDirect) {
   if (r.type === "TEXT" || r.type === "CONTACT") {
     const targetPhone = state.phone
     const text = r.type === "TEXT" ? renderVariables(r.text || "") : `${r.contactName || ""}: ${r.contactPhone || ""}`.trim()
+    if (direct && !await presenceBeforeSend("composing", targetPhone)) { sendState("canceled", "A conversa mudou. Nenhum novo envio foi solicitado."); return false }
+    if (direct && String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) { sendState("blocked", "Há um rascunho no campo. Nada foi acrescentado."); return false }
     if (!insertIntoComposer(text)) { sendState("failed", "A resposta não foi inserida. Confira o campo de mensagem."); return false }
-    api("POST", `/api/crm/quick-replies/${r.id}/use`)
+    if (r.id) api("POST", `/api/crm/quick-replies/${r.id}/use`)
     // "Enviar agora ao clicar": igual ao Hotzapp, clicar na resposta já envia
     if (direct) {
       await new Promise((res) => later(res, 150))
       if (extensionLife.expired || state.phone !== targetPhone) { sendState("canceled", "A conversa mudou. Nenhum novo envio foi solicitado."); return false }
+      if (!composerMatches(text)) { sendState("blocked", "O rascunho mudou. Revise antes de enviar."); return false }
       const requested = await clickSend(1500, false, targetPhone)
       sendState(requested ? "requested" : "uncertain", requested ? "Confira a conversa. O clique no botão não confirma entrega." : "Não foi possível confirmar a ação. Confira a conversa antes de repetir.")
       return requested
@@ -1227,7 +1352,7 @@ async function runReply(r, direct = !!prefs.sendDirect) {
     sendState("prepared", "A resposta está no campo de mensagem. Revise e envie pelo WhatsApp.")
     return false
   }
-  if (["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(r.type)) return attachFile(r, direct)
+  if (["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(r.type)) return attachFile(r, direct, options)
   toast("Este tipo de resposta ainda não funciona pela extensão.")
 }
 
@@ -1235,31 +1360,52 @@ function fileApi(path) {
   return runtimeMessage({ type: "file", path })
 }
 
+function composerMatches(text) {
+  const box = getComposer()
+  const normalize = value => String(value || "").replace(/\u200b/g, "").replace(/\s+/g, " ").trim()
+  return !!box && normalize(box.innerText || box.textContent) === normalize(text)
+}
+
 /**
  * Coloca o arquivo da resposta rápida na conversa, como se você tivesse colado ele no campo
  * de mensagem. O WhatsApp abre a tela de pré-visualização; a legenda é escrita nela e QUEM
- * ENVIA É VOCÊ (Enter). Áudio entra como arquivo de áudio, ainda não como "gravado na hora".
+ * ENVIA É VOCÊ (Enter). Áudios usam a sessão do WhatsApp Web, com prévia local no modo de revisão.
  */
-async function attachFile(r, direct = !!prefs.sendDirect) {
+async function attachFile(r, direct = !!prefs.sendDirect, options = {}) {
   const box = getComposer()
   if (!box) { toast("Abra uma conversa pra usar esta resposta."); return }
   const targetPhone = state.phone
-  if (r.type === "AUDIO" && r.asVoiceNote) {
+  toast("Carregando o arquivo…")
+  const res = options.preparedFile || await fileApi(`/api/crm/quick-replies/${r.id}/file`)
+  if (extensionLife.expired || state.phone !== targetPhone || getComposer() !== box) { if (!extensionLife.expired) toast("Conversa mudou. Arquivo não anexado."); return false }
+  if (!res.ok || !res.base64) { sendState("failed", "Não foi possível carregar o arquivo da biblioteca."); toast("Não consegui baixar o arquivo. Confira a conexão."); return false }
+  if (r.type === "AUDIO") {
+    if (!direct) {
+      openVoicePreview(r, res, targetPhone)
+      sendState("prepared", "Áudio aberto para ouvir e enviar nesta aba. Nenhum agendamento foi criado.")
+      toast("Áudio pronto para revisar.")
+      return false
+    }
+    const chat = await resolveChat()
+    if (chat.phone !== targetPhone || !await presenceBeforeSend("recording", targetPhone)) { sendState("canceled", "A conversa mudou. Áudio não enviado."); return false }
+    if (String(getComposer()?.textContent || "").replace(/\u200b/g, "").trim()) { sendState("blocked", "Há um rascunho no campo. Revise antes de enviar o áudio."); return false }
     const key = `${r.id}:${targetPhone}`
     lastQuickKey = key
     if (!quickSendRequests.has(key)) quickSendRequests.set(key, crypto.randomUUID())
-    const result = await api("POST", `/api/crm/quick-replies/${r.id}/send`, { phone: targetPhone, requestId: quickSendRequests.get(key), approved: !!direct })
-
-    if (!result.ok) { sendState(result.status ? "failed" : "uncertain", result.status ? "O servidor recusou a preparação. Confira o conector e o destinatário autorizado." : "A conexão caiu. Confira a fila do servidor antes de repetir."); toast(result.data?.error || "Nota de voz exige conector no servidor conectado e destinatário autorizado."); return false }
-    sendState(SEND_LABELS[result.data?.status] ? result.data.status : (direct ? "queued" : "review"), "A nota de voz usa o conector. Acompanhe em Envios no servidor; o lembrete continua aberto.", result.data?.id || null)
-    toast("Nota de voz preparada no servidor. Acompanhe o estado na fila.")
-    // A queued request is not a confirmed browser send; do not complete a reminder or continue a sequence.
+    const result = await askBridge("send-audio", 60000, { requestId: quickSendRequests.get(key), phone: targetPhone, key: chat.key || "", base64: res.base64, mime: (res.mime || r.mediaMime || "audio/ogg").split(";")[0].trim(), name: r.mediaName || "audio.ogg", asVoiceNote: !!r.asVoiceNote })
+    if (result?.ok) {
+      quickSendRequests.delete(key); lastQuickKey = null
+      if (r.id) api("POST", `/api/crm/quick-replies/${r.id}/use`)
+      sendState("requested", "Áudio solicitado ao WhatsApp nesta aba. Confira a conversa para confirmar o resultado.", null, targetPhone)
+      toast("Envio do áudio solicitado ao WhatsApp.")
+      return true
+    }
+    const uncertain = !result || result.uncertain
+    if (!uncertain) { quickSendRequests.delete(key); lastQuickKey = null }
+    sendState(result?.canceled ? "canceled" : uncertain ? "uncertain" : "failed", result?.error || (uncertain ? "Confira a conversa antes de repetir. O áudio não será reenviado automaticamente." : "A conversa mudou. Áudio não enviado."), null, targetPhone)
+    toast(result?.error || "Confira a conversa antes de tentar enviar novamente.")
     return false
   }
-  toast("Carregando o arquivo…")
-  const res = await fileApi(`/api/crm/quick-replies/${r.id}/file`)
-  if (extensionLife.expired || state.phone !== targetPhone || getComposer() !== box) { if (!extensionLife.expired) toast("Conversa mudou. Arquivo não anexado."); return false }
-  if (!res.ok || !res.base64) { toast("Não consegui baixar o arquivo. Confira a conexão."); return }
   let file
   try {
     const bin = atob(res.base64)
@@ -1281,7 +1427,7 @@ async function attachFile(r, direct = !!prefs.sendDirect) {
   }
   if (!handled) { toast("O WhatsApp não aceitou o anexo. Abra o clipe de anexos e tente novamente; nenhum envio foi confirmado."); return false }
 
-  api("POST", `/api/crm/quick-replies/${r.id}/use`)
+  if (r.id) api("POST", `/api/crm/quick-replies/${r.id}/use`)
   // legenda: o WhatsApp abre a pré-visualização com o foco na legenda
   const caption = r.type === "AUDIO" || !r.text ? "" : renderVariables(r.text)
   if (direct) {
@@ -1646,7 +1792,7 @@ function pluginBrand() {
   return '<img src="' + chrome.runtime.getURL('brand/icon.png') + '" alt="" />'
 }
 function applyPluginTheme(theme) {
-  prefs.theme = ["light", "minimal"].includes(theme) ? theme : "dark"
+  prefs.theme = theme === "minimal" || theme === "light-minimal" ? "light" : theme === "nexusync" ? "contrast" : ["light", "contrast"].includes(theme) ? theme : "dark"
   document.documentElement.dataset.vcrmTheme = prefs.theme
 }
 
@@ -1915,6 +2061,7 @@ async function onClick(e) {
     if (ta) {
       ta.focus()
       ta.setRangeText(rpVar.dataset.rpVar, ta.selectionStart, ta.selectionEnd, "end")
+      syncReplyForm()
     }
     return
   }
@@ -1934,9 +2081,9 @@ async function onClick(e) {
     return
   }
   if (act === "schedule-chat" || act === "funnel-chat") return toggleHdrPop(act === "schedule-chat" ? "sched" : "funnel")
-  if (act === "new-server-send") {
+  if (act === "new-browser-send") {
     if (replyBusy || !lastQuickKey) return
-    if (!confirm("Confira a conversa e a fila antes de continuar. Preparar outro envio permite enviar a mesma nota de voz novamente. Deseja continuar?")) return
+    if (!confirm("Confira a conversa antes de continuar. Preparar outro envio permite transmitir o mesmo áudio novamente. Deseja continuar?")) return
     quickSendRequests.delete(lastQuickKey); lastQuickKey = null; sendState("idle"); return
   }
   if (act === "send-status") return refreshSendStatus()
@@ -2057,7 +2204,7 @@ async function onSubmit(e) {
   if (!form) return
   e.preventDefault()
   const kind = form.dataset.form
-  if (kind === "rpform") return submitReplyForm(form)
+  if (kind === "rpform") return submitReplyForm(form, e.submitter?.dataset.replySend === "true")
   const f = new FormData(form)
   const msg = (m) => { const el = form.querySelector("[data-msg]"); if (el) el.textContent = m }
 
@@ -2145,6 +2292,12 @@ async function onSubmit(e) {
 }
 
 function onInput(e) {
+  if (rp.form && e.target.closest?.('form[data-form="rpform"]')) {
+    syncReplyForm()
+    const selected = document.querySelector('#vcrm-root [data-reply-selected]')
+    if (selected) selected.textContent = rp.form.file?.name || ""
+    return
+  }
   if (e.target.matches("[data-theme-select]")) {
     applyPluginTheme(e.target.value)
     void savePrefs().then(result => { if (!result?.ok) toast("Não foi possível salvar a aparência. Tente novamente.") })
@@ -2722,13 +2875,8 @@ async function sendScheduledReminder(reminder) {
       if (!reply) { toast("O anexo agendado não está disponível na biblioteca."); return false }
       return await useReply({ ...reply, ...(reply.type === "IMAGE" && reminder.scheduledMessage ? { text: reminder.scheduledMessage } : {}) })
     }
-    if (!reminder.scheduledMessage || !insertIntoComposer(renderVariables(reminder.scheduledMessage))) return false
-    if (!prefs.sendDirect) { sendState("prepared", "Revise e envie pelo WhatsApp; o lembrete continua aberto."); toast("Mensagem preparada. Revise e envie; conclua o lembrete depois."); return false }
-    await new Promise(resolve => later(resolve, 160))
-    if (extensionLife.expired || (await resolveChat()).phone !== current.phone) return false
-    const requested = await clickSend(1800, false, current.phone)
-    sendState(requested ? "requested" : "uncertain", "Confira a conversa para confirmar o resultado.")
-    return requested
+    if (!reminder.scheduledMessage) return false
+    return await useReply({ type: "TEXT", text: reminder.scheduledMessage }, { expectedPhone: current.phone })
   } finally { sendingReminders.delete(reminder.id) }
 }
 

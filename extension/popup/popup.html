@@ -6,11 +6,11 @@
   <title>VisionSync</title>
   <link rel="stylesheet" href="../panel.css" />
   <style>
-body { width:360px; margin:0; padding:18px; box-sizing:border-box; font:13px/1.5 'Segoe UI',system-ui,sans-serif; color:var(--v-text); background:var(--v-bg); }
+body { width:360px; margin:0; padding:22px; box-sizing:border-box; font:13px/1.5 'VisionSync UI','Segoe UI',system-ui,sans-serif; color:var(--v-text); background:var(--v-bg); color-scheme:var(--v-scheme); -webkit-font-smoothing:antialiased; }
 h1 { font-size:20px; margin:0; color:var(--v-text); } h1 b { color:var(--v-accent-text); }
-p.sub { color:var(--v-gold); margin:4px 0 16px; font-size:12px; }
+p.sub { color:var(--v-muted); margin:4px 0 20px; font-size:11px; } p.sub span { color:var(--v-gold); }
 label { display:block; margin:12px 0 5px; color:var(--v-text-2); font-weight:600; }
-input,select { width:100%; box-sizing:border-box; padding:10px; color:var(--v-text); background:var(--v-field); border:1px solid var(--v-line); border-radius:8px; font:inherit; }
+input,select { width:100%; box-sizing:border-box; padding:10px; color:var(--v-text); background:var(--v-field); border:1px solid var(--v-control-line); border-radius:8px; font:inherit; }
 button { width:100%; padding:11px; margin-top:14px; border:0; border-radius:10px; background:var(--v-accent); color:var(--v-on-accent); font:inherit; font-weight:600; cursor:pointer; }
 #repair { color:var(--v-accent-text); background:var(--v-field); border:1px solid var(--v-line); }
 button:disabled { opacity:.6; cursor:wait; } :focus-visible { outline:2px solid var(--v-gold); outline-offset:2px; }
@@ -23,9 +23,9 @@ button:disabled { opacity:.6; cursor:wait; } :focus-visible { outline:2px solid 
 </head>
 <body>
   <h1 class="vc-popup-brand" aria-label="VisionSync"><img class="vc-brand-on-dark" src="../brand/logo-small-wh.png" alt="" /><img class="vc-brand-on-light" src="../brand/logo-small-dark.png" alt="" /></h1>
-  <p class="sub">VisionSync 0.22.1</p>
+  <p class="sub">VisionSync 0.23.0 <span>· por NexuSync</span></p>
   <label for="theme">Aparência</label>
-  <select id="theme"><option value="dark">Vision escuro</option><option value="light">Vision claro</option><option value="minimal">Vision minimalista</option></select>
+  <select id="theme"><option value="dark">VisionSync</option><option value="contrast">Contraste</option><option value="light">Claro</option></select>
 
   <label for="apiUrl">URL do sistema</label>
   <input id="apiUrl" type="text" placeholder="http://localhost:3001" />

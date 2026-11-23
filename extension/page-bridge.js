@@ -1,13 +1,14 @@
 // Roda DENTRO da página do WhatsApp Web (mundo "MAIN"), porque o telefone da
 // conversa não aparece no HTML: ele só existe nos dados internos do WhatsApp.
-// Aqui só LEMOS qual conversa está aberta e o número dela. Nada é alterado nem enviado.
-// Fala com o content.js por eventos: "vcrm-v2-req" (pedido) e "vcrm-v2-res" (resposta).
+// Leitura de conversa, presença e envio de áudio na sessão já aberta do navegador.
+// Fala com o content.js por eventos versionados, sem receber credenciais do CRM.
 //
 // ⚠ PARTE FRÁGIL: nomes de módulos internos do WhatsApp mudam. Por isso tentamos
 // vários caminhos e devolvemos um "debug" dizendo o que funcionou.
 (() => {
-  if (window.__vcrmBridgeVersion === "0.20.0") return
-  window.__vcrmBridgeVersion = "0.20.0"
+  if (window.__vcrmBridgeVersion === "0.24.0") return
+  window.__vcrmBridgeDispose?.()
+  window.__vcrmBridgeVersion = "0.24.0"
 
   const req = (name) => {
     try { return window.require ? window.require(name) : null } catch { return null }
@@ -439,18 +440,86 @@
       return { base64: btoa(binary), mime: String(msg.mimetype || "").split(";")[0].trim(), type: msg.type === "image" ? "IMAGE" : "AUDIO", asVoiceNote: msg.type === "ptt", caption: msg.caption || "" }
     } catch { return { error: "Não foi possível obter essa mídia. Abra ou baixe o arquivo no WhatsApp e tente novamente." } }
   }
-  document.addEventListener("vcrm-v2-req", async (ev) => {
+  const presenceSessions = new Map()
+  const audioRequests = new Map()
+  function activeTarget(arg) {
+    if (!arg || !/^[0-9]{10,15}$/.test(arg.phone || "")) return null
+    const chat = findActiveChat({})
+    if (!chat || phoneFromChat(chat, {}) !== arg.phone || (arg.key && serial(chat.id) !== arg.key)) return null
+    return chat
+  }
+  async function presence(arg) {
+    const sdk = window.__vcrmWA
+    if (!arg || typeof arg.requestId !== "string") return { ok: false }
+    if (arg.action === "stop") {
+      const session = presenceSessions.get(arg.requestId)
+      if (session) { presenceSessions.delete(arg.requestId); try { await sdk?.chat?.markIsPaused(session.id) } catch {} }
+      return { ok: true }
+    }
+    const chat = activeTarget(arg)
+    if (!chat) return { ok: false, canceled: true }
+    const method = arg.action === "recording" ? "markIsRecording" : arg.action === "composing" ? "markIsComposing" : null
+    if (!method || !sdk?.isReady || typeof sdk.chat?.[method] !== "function") return { ok: false, supported: false }
+    try {
+      const session = { id: chat.id }
+      presenceSessions.set(arg.requestId, session)
+      await sdk.chat[method](chat.id)
+      if (presenceSessions.get(arg.requestId) !== session) { await sdk.chat.markIsPaused(chat.id); return { ok: false, canceled: true } }
+      return { ok: true }
+    } catch { presenceSessions.delete(arg.requestId); try { await sdk.chat.markIsPaused(chat.id) } catch {} return { ok: false, supported: false } }
+  }
+  async function sendAudio(arg) {
+    if (!arg || !/^[a-f0-9-]{36}$/i.test(arg.requestId || "") || typeof arg.base64 !== "string" || arg.base64.length > 5592408 || !/^[A-Za-z0-9+/]+={0,2}$/.test(arg.base64) || !["audio/ogg", "audio/ogg; codecs=opus", "audio/mpeg"].includes(arg.mime)) return { ok: false, error: "Áudio inválido ou acima de 4 MB." }
+    if (audioRequests.has(arg.requestId)) return audioRequests.get(arg.requestId).task
+    if (audioRequests.size >= 50) {
+      for (const [id, record] of audioRequests) {
+        if (record.settled && !record.uncertain) { audioRequests.delete(id); break }
+      }
+      if (audioRequests.size >= 50) return { ok: false, error: "Há envios sem confirmação nesta aba. Confira as conversas antes de continuar." }
+    }
+    const sdk = window.__vcrmWA
+    const chat = activeTarget(arg)
+    if (!chat) return { ok: false, canceled: true }
+    if (!sdk?.isReady || typeof sdk.chat?.sendFileMessage !== "function") return { ok: false, error: "O WhatsApp ainda não disponibilizou o envio de áudio. Aguarde carregar ou reative o painel da extensão." }
+    const task = (async () => {
+      let invoked = false
+      try {
+        const bytes = Uint8Array.from(atob(arg.base64), c => c.charCodeAt(0))
+        if (!bytes.length || bytes.length > 4 * 1024 * 1024) return { ok: false, error: "Áudio inválido ou acima de 4 MB." }
+        // Recheck immediately before calling WhatsApp, after all local preparation.
+        if (activeTarget(arg) !== chat) return { ok: false, canceled: true }
+        const blob = new Blob([bytes], { type: arg.mime })
+        invoked = true
+        const result = await sdk.chat.sendFileMessage(chat.id, blob, { type: "audio", isPtt: !!arg.asVoiceNote, filename: String(arg.name || "audio.ogg").slice(0, 180), mimetype: arg.mime, waveform: !!arg.asVoiceNote, waitForAck: false, markIsRead: false })
+        return result?.id ? { ok: true, messageId: String(result.id) } : { ok: false, uncertain: true }
+      } catch { return { ok: false, uncertain: invoked, error: invoked ? "Confira a conversa antes de tentar novamente; o resultado do envio não foi confirmado." : "Não foi possível preparar o áudio." } }
+    })()
+    const record = { task, settled: false, uncertain: false }
+    audioRequests.set(arg.requestId, record)
+    // Never evict an in-flight or ambiguous send merely to admit another request.
+    void task.then(result => { record.settled = true; record.uncertain = !!result.uncertain })
+    return task
+  }
+  async function handleRequest(ev) {
     let id = ev.detail
     let kind = "chat"
     let arg = null
     try { const d = JSON.parse(ev.detail); if (d && typeof d === "object") { id = d.id; kind = d.kind || "chat"; arg = d.arg } } catch {}
     const out =
-      kind === "export-message" ? await exportMessage(String(arg || ""))
+      kind === "send-audio" ? await sendAudio(arg)
+      : kind === "presence" ? await presence(arg)
+      : kind === "export-message" ? await exportMessage(String(arg || ""))
       : kind === "scan" ? scan()
       : kind === "waiting" ? waiting((arg && arg.minMinutes) || 60, (arg && arg.maxHours) || 72)
       : kind === "open" ? openChat(String(arg || ""))
       : kind === "adinfo" ? adInfo()
       : answer()
-    document.dispatchEvent(new CustomEvent("vcrm-v2-res", { detail: JSON.stringify({ id, ...out }) }))
-  })
+    document.dispatchEvent(new CustomEvent("vcrm-v3-res", { detail: JSON.stringify({ id, ...out }) }))
+  }
+  document.addEventListener("vcrm-v3-req", handleRequest)
+  window.__vcrmBridgeDispose = () => {
+    document.removeEventListener("vcrm-v3-req", handleRequest)
+    for (const session of presenceSessions.values()) void Promise.resolve(window.__vcrmWA?.chat?.markIsPaused(session.id)).catch(() => {})
+    presenceSessions.clear()
+  }
 })()

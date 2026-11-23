@@ -1,6 +1,28 @@
-html { --v-bg:#040a1c; --v-card:#0c2150; --v-field:#182c55; --v-hover:#142c5c; --v-text:#e8eefc; --v-text-2:#c9d5f2; --v-muted:#8ea0c8; --v-accent:#e0245e; --v-accent-text:#ff8fb1; --v-accent-soft:#24132d; --v-teal:#2563eb; --v-gold:#c4a56a; --v-line:#68304e; --v-ok:#7ef0c0; --v-danger:#ff7a8a; --v-on-accent:#ffffff; }
-html[data-vcrm-theme="light"] { --v-bg:#f2f1ed; --v-card:#fcfbf8; --v-field:#e9eef4; --v-hover:#e1eaf3; --v-text:#223b55; --v-text-2:#3b526d; --v-muted:#53677e; --v-accent:#79344d; --v-accent-text:#79344d; --v-accent-soft:#f1e5e9; --v-teal:#355a7b; --v-gold:#75603a; --v-line:#a9b9cb; --v-ok:#18674e; --v-danger:#ac223b; }
-html[data-vcrm-theme="minimal"] { --v-bg:#f3f5f8; --v-card:#ffffff; --v-field:#edf1f5; --v-hover:#e7edf3; --v-text:#253444; --v-text-2:#3f5266; --v-muted:#566678; --v-accent:#425a70; --v-accent-text:#425a70; --v-accent-soft:#e5ecf3; --v-teal:#425a70; --v-gold:#485f73; --v-line:#aebbc8; --v-ok:#18674e; --v-danger:#ac223b; }
+@font-face { font-family:"VisionSync UI"; src:url("brand/geist-latin.woff2") format("woff2"); font-style:normal; font-weight:100 900; font-display:swap; }
+html { --v-bg:#050b1f; --v-card:#0b1a3d; --v-field:#142a57; --v-hover:#112650; --v-text:#e6f0ff; --v-text-2:#c3d4f2; --v-muted:#8da6d0; --v-accent:#00e5ff; --v-accent-text:#5ce8ff; --v-accent-soft:#082a40; --v-teal:#6aa4ff; --v-gold:#c6f21a; --v-wait:#ffd48a; --v-line:#1f3566; --v-control-line:#7f98c0; --v-ok:#7ef0c0; --v-danger:#ff7a8a; --v-on-accent:#031024; --v-scheme:dark; }
+html[data-vcrm-theme="light"] { --v-bg:#f1f4f9; --v-card:#fbfcfe; --v-field:#e6edf7; --v-hover:#dde8f6; --v-text:#14284f; --v-text-2:#2f4468; --v-muted:#53677e; --v-accent:#0a4fd1; --v-accent-text:#0a4fd1; --v-accent-soft:#e3ecfb; --v-teal:#0b7ea0; --v-gold:#5d7a00; --v-wait:#72540d; --v-line:#c3d0e3; --v-control-line:#6f86a6; --v-ok:#18674e; --v-danger:#ac223b; --v-scheme:light; }
+html[data-vcrm-theme="contrast"] { --v-bg:#080b12; --v-card:#121a27; --v-field:#182232; --v-hover:#1a2536; --v-text:#dce2ed; --v-text-2:#bcc7d8; --v-muted:#a7b1c2; --v-accent:#c6f21a; --v-accent-text:#00e5ff; --v-accent-soft:#1d2a25; --v-teal:#8da7ff; --v-gold:#c6f21a; --v-wait:#f6bf6c; --v-line:#2c3a50; --v-control-line:#687b97; --v-ok:#6dddc3; --v-danger:#ff9cac; --v-on-accent:#080b12; }
+
+/* Reply creation and audio review stay above the current WhatsApp conversation. */
+.vc-editor-backdrop { position:fixed; inset:0; z-index:2147483600; display:grid; place-items:center; padding:24px 24px 24px 68px; background:#03070f99; color:var(--v-text); font-family:"VisionSync UI","Segoe UI",system-ui,sans-serif; color-scheme:var(--v-scheme); box-sizing:border-box; }
+#vcrm-root[data-reply-editor="true"] .vc-panel { visibility:hidden; pointer-events:none; }
+.vc-reply-dialog, .vc-audio-dialog { width:min(760px,100%); min-width:0; max-height:calc(100dvh - 48px); background:var(--v-bg); border:1px solid var(--v-line); border-radius:16px; box-shadow:0 24px 80px #0008; overflow:hidden; display:flex; flex-direction:column; }
+.vc-reply-dialog h2, .vc-audio-dialog h2 { font-size:18px; margin:0; font-weight:600; }
+.vc-editor-body { padding:20px; overflow:auto; min-height:0; overscroll-behavior:contain; }
+#vcrm-root .vc-editor-body .rp-form { margin:0; padding:0; border:0; background:transparent; }
+#vcrm-root .rp-form > fieldset { border:0; padding:0; margin:0; min-width:0; display:flex; flex-direction:column; gap:10px; }
+#vcrm-root .rp-form .rp-seg.wide { border-radius:10px; flex-wrap:wrap; }
+#vcrm-root .rp-form .rp-seg button { min-height:40px; padding:8px 12px; }
+#vcrm-root .rp-form .vc-actions { flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:12px; }
+#vcrm-root .rp-form .vc-actions button { min-height:42px; }
+.vc-audio-dialog { padding:24px; gap:16px; max-width:480px; overflow:auto; }
+.vc-audio-dialog p { margin:0; font-size:13px; line-height:1.6; color:var(--v-text-2); overflow-wrap:anywhere; }
+.vc-audio-dialog audio { width:100%; }
+.vc-audio-dialog .vc-actions { display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+.vc-audio-dialog button { font:inherit; cursor:pointer; min-height:42px; border-radius:8px; padding:10px 16px; border:1px solid var(--v-control-line); background:var(--v-field); color:var(--v-text); }
+.vc-audio-dialog [data-voice-send] { background:var(--v-accent); color:var(--v-on-accent); border-color:var(--v-accent); }
+.vc-audio-dialog button:focus-visible { outline:2px solid var(--v-accent-text); outline-offset:3px; }
+@media(max-width:600px) { .vc-editor-backdrop { padding:12px; } .vc-reply-dialog,.vc-audio-dialog { max-height:calc(100dvh - 24px); } .vc-editor-body { padding:16px; } #vcrm-root .rp-form .vc-actions button { flex:1 1 140px; } }
 /* VisionSync dentro do WhatsApp Web. Temas Vision: petróleo, vinho e dourado; branco e prata no minimalista. */
 
 #vcrm-root {
@@ -17,7 +39,8 @@ html[data-vcrm-theme="minimal"] { --v-bg:#f3f5f8; --v-card:#ffffff; --v-field:#e
   --glow: var(--v-accent-soft);
   --vred: var(--v-accent-text);
   --gold: var(--v-gold);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "VisionSync UI", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
   color: var(--text);
 }
 #vcrm-root *, #vcrm-bar *, #vcrm-pop * { box-sizing: border-box; font-family: inherit; }
@@ -528,7 +551,7 @@ html.vcrm-blur #vcrm-root .vc-stats:hover b {
 #vcrm-root [data-theme-select] { width:100%; padding:9px 10px; border:1px solid var(--v-line); border-radius:9px; font:inherit; }
 #vcrm-hpop { box-sizing:border-box; max-width:calc(100vw - 58px); max-height:calc(100vh - 16px); overflow-y:auto; }
 #vcrm-wait .vw-time.late { color:var(--v-danger); }
-html:is([data-vcrm-theme="light"],[data-vcrm-theme="minimal"]) :is(#vcrm-root input, #vcrm-hpop input) { color-scheme:light; }
+#vcrm-root input, #vcrm-root select, #vcrm-hpop input { color-scheme:var(--v-scheme); }
 #vcrm-root .vc-btn, #vcrm-hpop .vc-btn { background:var(--v-accent); color:var(--v-on-accent); }
 #vcrm-root .vc-head, #vcrm-root .vc-rail { background:var(--v-card); }
 #vcrm-root .vc-version { color:var(--v-muted); font-size:10px; margin-left:auto; margin-right:8px; }
@@ -543,25 +566,53 @@ html:is([data-vcrm-theme="light"],[data-vcrm-theme="minimal"]) :is(#vcrm-root in
 html[data-vcrm-theme="light"] #vcrm-root .vc-ico, html[data-vcrm-theme="light"] #vcrm-root .vc-x { color:var(--v-accent-text); }
 
 .vc-logo, .vc-ico.on, .vc-ico.on svg, .vc-avatar, .vc-btn, .vc-badge-n, .rp-seg button.on, .vkb-open, #vcrm-barmenu .vm-seg button.on { color:var(--v-on-accent); }
-html[data-vcrm-theme="light"] #vcrm-root .vc-ico.on { color:var(--v-on-accent); }
 .vkb-newcol input, .vdial-box input, .vdial-box textarea, .vkb-move { color:var(--v-text); background:var(--v-field); border-color:var(--v-line); }
 .vkb-col, .vkb-card, .vkb-step { background:var(--v-card); border-color:var(--v-line); }
 #vcrm-reload-notice { color:var(--v-text); background:var(--v-card); border-color:var(--v-accent); }
 
-html[data-vcrm-theme="minimal"] :is(.vc-panel,.vc-rail,.vc-avatar,.vc-btn,.vkb-box,.vdial-box) { background-image:none; box-shadow:none; }
-html[data-vcrm-theme="minimal"] .vc-avatar { background:var(--v-accent); }
-
-html[data-vcrm-theme="minimal"] #vcrm-root { --glow:transparent; }
-
 .vc-brand-on-light { display:none; }
-html:is([data-vcrm-theme="light"],[data-vcrm-theme="minimal"]) .vc-brand-on-dark { display:none; }
-html:is([data-vcrm-theme="light"],[data-vcrm-theme="minimal"]) .vc-brand-on-light { display:block; }
+html[data-vcrm-theme="light"] .vc-brand-on-dark { display:none; }
+html[data-vcrm-theme="light"] .vc-brand-on-light { display:block; }
 .vc-popup-brand { width:250px; max-width:100%; line-height:0; margin:2px 0 16px; }
 .vc-popup-brand img { width:100%; height:auto; }
 #vcrm-root .vc-brand-symbol { position:relative; width:44px; height:40px; overflow:hidden; background:transparent; box-shadow:none; border-radius:0; }
 #vcrm-root .vc-brand-symbol img { position:absolute; left:0; top:4px; width:240px; max-width:none; height:auto; }
 
 #vcrm-root .vc-brand-symbol img { width:40px; height:40px; left:2px; top:0; object-fit:contain; border-radius:10px; }
+
+/* Shared finish for the workspace, floating controls and extension popup. */
+#vcrm-root { --field:var(--v-field); --line:var(--v-line); --glow:transparent; }
+:is(#vcrm-root,#vcrm-bar,#vcrm-pop,#vcrm-barmenu,#vcrm-hpop,#vcrm-hdr,#vcrm-side,#vcrm-wait,#vcrm-kanban-modal,#vcrm-dial-modal,#vcrm-due-alert,#vcrm-inbox-list) { font-family:"VisionSync UI","Segoe UI",system-ui,sans-serif; color-scheme:var(--v-scheme); }
+#vcrm-root :is(button,input,select,textarea), #vcrm-bar button { font-family:inherit; }
+#vcrm-root :is(button,a,input,select,textarea), #vcrm-bar button, #vcrm-hpop button { transition:background-color .18s ease,border-color .18s ease,color .18s ease; }
+#vcrm-root .vc-head { padding-block:16px; }
+#vcrm-root .vc-title { font-weight:600; letter-spacing:-.025em; }
+#vcrm-root .vc-sec { color:var(--v-muted); font-size:10px; letter-spacing:1.2px; }
+#vcrm-root .vc-ico.on { background:var(--v-accent-soft); color:var(--v-accent-text); box-shadow:inset 3px 0 var(--v-accent); }
+#vcrm-root .vc-ico.on svg { color:var(--v-accent-text); }
+#vcrm-root :is(.vc-ico,.vc-x):hover { background:var(--v-hover); }
+#vcrm-root .vc-avatar { background:var(--v-accent); color:var(--v-on-accent); }
+#vcrm-root :is(.vc-btn,.vc-card) { box-shadow:none; }
+.vc-btn { background:var(--v-accent); color:var(--v-on-accent); }
+.vc-ghost { border-color:var(--v-line); color:var(--v-accent-text); }
+.vkb-box, .vdial-box, .vkb-top, .vkb-col-head { border-color:var(--v-line); }
+#vcrm-root :is(input,select,textarea), #vcrm-hpop :is(input,select,textarea) { border-color:var(--v-control-line); }
+#vcrm-side { background:var(--v-bg); border-color:var(--v-line); box-shadow:0 8px 24px #0003; }
+#vcrm-side button b, #vcrm-bar button:hover, #vcrm-hpop .vh-chips button:hover { color:var(--v-on-accent); }
+#vcrm-bar .vb-chip:hover { color:var(--v-text); }
+html[data-vcrm-theme="light"] #vcrm-bar .vb-chip.tinted { background:hsl(var(--h) 35% 94%); border-color:hsl(var(--h) 28% 56%); }
+.vc-badge.gold, .vc-badge.pendente, #vcrm-inbox-list .vib-tag.amber { color:var(--v-wait); }
+#vcrm-bar .vb-filter { background:var(--v-accent-soft); color:var(--v-accent-text); }
+#vcrm-root .rp-seg button.on, #vcrm-barmenu .vm-seg button.on, .vkb-open { background:var(--v-accent); color:var(--v-on-accent); }
+#vcrm-bar .vb-min, #vcrm-hdr .vh-pill, #vcrm-barmenu, #vcrm-hpop.funnel { border-color:var(--v-line); }
+.vc-appearance-preview { display:flex; gap:12px; min-height:130px; border:1px solid var(--v-line); border-radius:12px; padding:16px; background:var(--v-bg); margin-bottom:12px; }
+.vc-appearance-preview > i { width:22%; border-radius:6px; border-left:3px solid var(--v-accent); background:var(--v-card); }
+.vc-appearance-preview > span { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+.vc-appearance-preview b { grid-column:1 / -1; width:65%; height:5px; background:var(--v-text); border-radius:2px; }
+.vc-appearance-preview span i { height:42px; border:1px solid var(--v-line); border-bottom:2px solid var(--v-gold); border-radius:6px; background:var(--v-card); }
+.vc-appearance-preview span i + i { border-bottom-color:var(--v-accent-text); }
+.vc-appearance-preview em { height:7px; width:70%; border-radius:3px; background:var(--v-accent); }
+@media(prefers-reduced-motion:reduce) { #vcrm-root *, #vcrm-bar *, #vcrm-hpop * { transition:none !important; } }
 
 /* Explicit send modes and persistent operation feedback. */
 #vcrm-root .vc-send-modes { display:flex; gap:6px; margin-bottom:6px; }

@@ -1,12 +1,12 @@
 # VisionSync — Documento de Desenvolvimento
 
-Versão 1.4 · 9 de novembro de 2026 · Fechamento da primeira etapa de desenvolvimento e da base visual.
+Versão 1.5 · 19 de novembro de 2026 · Base de desenvolvimento com os temas VisionSync, NexuSync e Claro. Registros de validação anteriores permanecem como histórico.
 
 ## 1. Objetivo
 
 O VisionSync organiza contatos, atendimento e vendas associados ao WhatsApp. O painel web concentra a operação e oferece uma alternativa à extensão; a extensão Chrome facilita o uso do CRM durante o atendimento no WhatsApp Web.
 
-Esta etapa entrega uma base funcional local, com persistência MongoDB, melhorias de integridade e navegação e quatro temas visuais. Não representa o MVP completo com oportunidades exclusivas, atribuição de campanhas, fila durável, ERP ou BI.
+Esta etapa entrega uma base funcional local, com persistência MongoDB, melhorias de integridade e navegação. A revisão visual de 19/11/2026 oferece três temas. Não representa o MVP completo com oportunidades exclusivas, atribuição de campanhas, fila durável, ERP ou BI.
 
 Este é o guia consolidado para desenvolver e manter a aplicação atual. A [especificação de arquitetura](01-arquitetura-e-diretrizes.md) preserva os contratos de destino e o inventário histórico. O [roadmap consolidado](05-roadmap.md) organiza o próximo trabalho. O [estado da implementação](03-estado-da-implementacao.md) registra o alcance das verificações.
 
@@ -61,7 +61,7 @@ Os valores de versão registram esta entrega; não são orientação para atuali
 | Mensagens | Respostas rápidas, mídia e sequências de apoio | Envio humano; homologação WhatsApp real permanece necessária |
 | Extensão | Pacote MV3, configuração, token e acesso por origem | Não é integração oficial do WhatsApp |
 | Integrações | Configuração Meta e envio legado protegido por configuração | Sem outbox durável, ERP ou homologação real nesta etapa |
-| Aparência | Escuro original, escuro minimalista, claro e claro minimalista | Preferência neste navegador; não é preferência sincronizada de conta |
+| Aparência | VisionSync, NexuSync e Claro | Preferência neste navegador; site e extensão mantêm escolhas independentes |
 
 ## 6. Regras essenciais de dados
 
@@ -85,16 +85,15 @@ Manter consistência de terminologia, datas de Brasília, formatação monetári
 
 | Tema | Identificador | Proposta |
 |---|---|---|
-| Escuro original | `dark-original` | Padrão; azul profundo, vinho, gradientes e brilho existentes |
-| Escuro minimalista | `dark-minimal` | Grafite, superfícies planas e linhas neutras |
-| Claro | `light` | Superfícies claras, profundidade suave e destaques da marca |
-| Claro minimalista | `light-minimal` | Branco e neutros, linhas discretas e pouca decoração |
+| VisionSync | `dark` | Padrão; azul-marinho, vinho e detalhes dourados |
+| Contraste | `contrast` | Grafite, azul e ciano, com lima nas ações (antigo `nexusync`, migrado automaticamente) |
+| Claro | `light` | Marfim, superfícies claras e detalhes em vinho |
 
-O seletor fica em **Configurações → Aparência** e também no detalhe Aparência de login/cadastro. A escolha muda a interface imediatamente e grava apenas o identificador no cookie `visionsync-theme`, com duração de um ano. O servidor valida esse valor e entrega o atributo `data-theme` do HTML antes da hidratação. Valor ausente/inválido retorna ao escuro original. Não há escolha automática baseada no sistema operacional.
+O seletor rápido fica na barra lateral; as prévias ficam em **Configurações → Aparência** e no detalhe Aparência de login/cadastro. A escolha muda a interface imediatamente e grava apenas o identificador no cookie `visionsync-theme`, com duração de um ano. O servidor valida esse valor e entrega o atributo `data-theme` do HTML antes da hidratação. Valor ausente/inválido retorna a VisionSync. Preferências legadas `dark-original`/`dark-minimal` migram para `dark`; `minimal`/`light-minimal` migram para `light`. Não há escolha automática baseada no sistema operacional.
 
-O cookie é uma preferência visual, não uma credencial. Ele não altera permissões, dados da conta ou configuração da extensão. Os temas abrangem painel, formulários, fichas, menus e autenticação; o visual inserido no WhatsApp pela extensão continua independente.
+O cookie é uma preferência visual, não uma credencial. Ele não altera permissões, dados da conta ou configuração da extensão. Os temas abrangem painel, formulários, fichas, menus e autenticação. A extensão oferece as mesmas três paletas, com escolha independente em `vcrmPrefs`, pelo popup e pelo painel Aparência do WhatsApp.
 
-As cores e superfícies ficam em `globals.css`; o catálogo e a validação em `lib/themes.ts`; estado/seleção em `ThemeProvider` e `ThemePicker`. Minimalistas retiram brilhos, gradientes e sombras decorativas. Novos componentes devem consumir tokens, inclusive em menus e estados semânticos, em vez de fixar cores escuras.
+As cores e superfícies ficam em `globals.css`; o catálogo e a validação em `lib/themes.ts`; estado/seleção em `ThemeProvider`, `ThemePicker` e `ThemeSwitcher`. O texto do tema ativo acompanha ambos os seletores. Na extensão, os tokens ficam em `panel.css` e a validação do popup/background em `src/themes.ts`. A fonte Geist é local, com licença OFL, e seu arquivo é público também antes do login. Novos componentes devem consumir tokens, inclusive em menus e estados semânticos, em vez de fixar cores escuras.
 
 O cookie no layout raiz torna as páginas web renderizadas por requisição. É uma escolha deliberada para aplicar a preferência já no HTML sem lampejo de outro tema. Se futuramente houver páginas públicas estáticas de marketing, isolar essa preferência em layouts apropriados antes de ampliar a aplicação.
 
@@ -120,9 +119,9 @@ A demonstração usa `npm exec --workspace @visionsync/web -- tsx scripts/previe
 
 ## 10. Qualidade e critérios de conclusão
 
-Antes de encerrar uma alteração: conferir o conteúdo atual; preservar o trabalho existente; executar verificações proporcionais; reler documentos alterados; registrar comportamento entregue e pendências. Mudanças de dados exigem testes com isolamento, concorrência e compatibilidade; mudanças visuais exigem conferência dos quatro temas, teclado, desktop e celular.
+Antes de encerrar uma alteração: conferir o conteúdo atual; preservar o trabalho existente; executar verificações proporcionais; reler documentos alterados; registrar comportamento entregue e pendências. Mudanças de dados exigem testes com isolamento, concorrência e compatibilidade; mudanças visuais exigem conferência dos três temas atuais, teclado, desktop e celular.
 
-Critérios da primeira etapa: build/tipos/lint/testes aprovados; consultas paginadas com totais globais; gravações financeiras protegidas; quatro temas selecionáveis e persistentes; documentação consolidada; nenhuma integração externa apresentada como homologada sem evidência.
+Critérios da primeira etapa: build/tipos/lint/testes aprovados; consultas paginadas com totais globais; gravações financeiras protegidas; três temas atuais selecionáveis e persistentes; documentação consolidada; nenhuma integração externa apresentada como homologada sem evidência.
 
 O fechamento local da etapa não aprova produção. Driver direto, migração de dados reais, backup/restauração, homologação externa e itens de segurança pendentes seguem no roadmap. Não houve deploy, publicação em loja ou alteração do banco real neste fechamento.
 

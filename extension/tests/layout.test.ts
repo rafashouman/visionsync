@@ -2,6 +2,7 @@ import { test } from "node:test"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { runInNewContext } from "node:vm"
+import { resolvePluginTheme } from "../src/themes"
 
 const source = readFileSync(new URL("../content.js", import.meta.url), "utf8")
 type FakeEvent = { target: { closest: (selector: string) => { dataset: { ibTab: string } } | null }; stopPropagation: () => void }
@@ -71,9 +72,24 @@ test("appearance is available without a connection and the selected theme is sav
   const api = runInNewContext(`${source}
     state.tab = "aparencia"; state.status = "no_config";
     ({ renderBody, onInput })`, context) as { renderBody: () => string; onInput: (event: unknown) => void }
-  assert.match(api.renderBody(), /Vision minimalista/)
-  api.onInput({ target: { value: "minimal", matches: (selector: string) => selector === "[data-theme-select]" } })
+  assert.match(api.renderBody(), /value="dark"[^>]*>VisionSync/)
+  assert.match(api.renderBody(), /value="contrast"[^>]*>Contraste/)
+  assert.match(api.renderBody(), /value="light"[^>]*>Claro/)
+  api.onInput({ target: { value: "contrast", matches: (selector: string) => selector === "[data-theme-select]" } })
   await new Promise(resolve => setImmediate(resolve))
-  assert.equal((document.documentElement.dataset as { vcrmTheme?: string }).vcrmTheme, "minimal")
-  assert.equal((messages[0] as { values: { vcrmPrefs: { theme: string } } }).values.vcrmPrefs.theme, "minimal")
+  assert.equal((document.documentElement.dataset as { vcrmTheme?: string }).vcrmTheme, "contrast")
+  assert.equal((messages[0] as { values: { vcrmPrefs: { theme: string } } }).values.vcrmPrefs.theme, "contrast")
+})
+
+test("popup and WhatsApp panel migrate old themes the same way", () => {
+  const document = { documentElement: { dataset: {} as { vcrmTheme?: string } }, addEventListener() {} }
+  const context = { document, setInterval() { return 1 }, clearInterval() {}, setTimeout, clearTimeout }
+  const apply = runInNewContext(`${source}\napplyPluginTheme`, context) as (value: unknown) => void
+  for (const value of ["dark", "contrast", "nexusync", "light", "minimal", "light-minimal", "dark-original", "dark-minimal", "", null]) {
+    apply(value)
+    assert.equal(document.documentElement.dataset.vcrmTheme, resolvePluginTheme(value))
+  }
+  assert.equal(resolvePluginTheme("minimal"), "light")
+  assert.equal(resolvePluginTheme("contrast"), "contrast")
+  assert.equal(resolvePluginTheme("nexusync"), "contrast")
 })

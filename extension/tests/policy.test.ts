@@ -17,6 +17,14 @@ test("message capture upload accepts only bounded image/audio payloads", () => {
   assert.equal(allowedUpload({ ...message, base64: "a".repeat(5592409) }), false)
 })
 
+test("the inline editor can upload videos and documents with their original safe filenames", () => {
+  const video = { type: "upload-reply", name: "Apresentação", mediaType: "VIDEO", mime: "video/mp4", filename: "apresentacao.mp4", base64: "AAAA" }
+  assert.equal(allowedUpload(video), true)
+  assert.equal(allowedUpload({ ...video, mediaType: "DOCUMENT", mime: "application/pdf", filename: "proposta.pdf" }), true)
+  assert.equal(allowedUpload({ ...video, mediaType: "AUDIO" }), false)
+  assert.equal(allowedUpload({ ...video, filename: "../video.mp4" }), false)
+})
+
 test("avatar fetch is limited to WhatsApp CDN, authenticated CRM avatar reads stay scoped", () => {
   for (const url of ["https://pps.whatsapp.net/photo", "https://media.xx.fbcdn.net/photo"]) assert.equal(allowedAvatarUrl(url), true)
   for (const url of ["http://pps.whatsapp.net/photo", "https://whatsapp.net.evil.test/x", "http://127.0.0.1:27018", "https://evil.test/photo", "https://user:pass@pps.whatsapp.net/x", "https://pps.whatsapp.net:444/x"]) assert.equal(allowedAvatarUrl(url), false)

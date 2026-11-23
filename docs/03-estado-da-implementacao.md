@@ -155,3 +155,23 @@ Aplicados os quatro PNG fornecidos pelo usuário: logo-big-white e logo-small-wh
 ## Fundos de acesso e ícones oficiais — 10/11/2026
 
 Aplicados os três BGs fornecidos no login e cadastro. Sorteio inicial no cliente e alternância aleatória a cada 15 segundos sem repetir imediatamente, com transição de opacidade; nova imagem só aparece após carregar. Aba oculta pausa as trocas e preferência por movimento reduzido mantém a imagem inicial estática. Formulário usa superfície opaca do tema para legibilidade. Recursos públicos de marca enumerados no proxy; dashboard continua protegido. Ícone fornecido aplicado ao trilho do plugin, toolbar e gerenciador do Chrome em 16/32/48/128 pixels, favicon ICO 16/32/48, PNG e Apple Touch 180. Pacote da extensão 0.20.5 gerado. TypeScript e lint aprovados; HTTP confirmou imagens e ícones sem login e redirecionamento do dashboard. Sem deploy nesta etapa.
+
+## Revisão dos temas VisionSync, NexuSync e Claro — 19/11/2026
+
+Consolidados os três temas no CRM e na extensão 0.23.0: VisionSync permanece padrão, NexuSync usa grafite/cobalto/ciano/lima e Claro usa marfim/vinho. O painel oferece troca rápida na barra lateral e prévias em Configurações; o login também oferece as três opções. Preferências minimalistas claras migram para Claro e preferências escuras antigas para VisionSync. Site e extensão mantêm escolhas independentes.
+
+Corrigido o acesso público à fonte Geist local, antes interceptado pela proteção de login. A liberação enumera somente o arquivo da fonte. O texto do tema ativo agora deriva da mesma preferência dos dois seletores, evitando uma confirmação antiga ao mudar pela barra lateral. README e guia de desenvolvimento atualizados.
+
+Verificação desta continuação: cinco testes direcionados de temas/layout aprovados, incluindo migração de preferências e os pares de contraste selecionados; lint dos dois arquivos funcionais alterados aprovado. Build final de produção com Turbopack aprovado, incluindo TypeScript e geração das 53 páginas. O build Webpack anterior à correção final do texto de confirmação também concluiu com código zero. O Turbopack ainda emite dois avisos sobre rastreamento de caminhos dinâmicos em `local-storage.ts`, fora desta alteração visual.
+
+Navegador com MongoDB temporário e contas fictícias: três temas, seleção por teclado, persistência após recarga, troca pela barra lateral, login, painel, configurações, contatos e ficha. Conferidos desktop, configurações a 840 px e login/contatos/ficha a 360 px, sem extravasamento horizontal do documento. Menu móvel e ficha fecharam por Escape e restauraram foco. O build final confirmou o texto do tema ativo acompanhando a troca lateral. Fonte respondeu 200 como WOFF2 sem sessão; dashboard continuou redirecionando (307), API privada respondeu 401 e caminho não autorizado de marca continuou protegido. Tema VisionSync e viewport padrão restaurados; demonstrações encerradas.
+
+Não houve deploy, uso do banco real, envio de mensagens ou homologação da extensão em WhatsApp real nesta continuação.
+
+## Extensão 0.24.0 — áudio local, presença e editor sobreposto
+
+Áudios e notas de voz das respostas rápidas passam pela sessão já aberta do WhatsApp Web, sem criar job no servidor ou exigir outro QR. O modo de revisão abre player e botões locais; Salvar e enviar agora cadastra e solicita o envio na conversa original. O editor sobreposto oferece os sete tipos de resposta, mantém o arquivo selecionado em memória e permite editar metadados de mídias.
+
+O adaptador WA-JS 4.8.2 é distribuído no pacote, com namespace isolado, licença incluída e analytics desativado. Indicadores nativos de digitando/gravando são solicitados por aproximadamente três segundos quando disponíveis. Troca de conversa, invalidação, rascunho alterado e cliques concorrentes interrompem os próximos passos; áudio com resultado incerto conserva a identidade da operação, sem repetição automática. A fila do servidor permanece separada para os agendamentos automáticos.
+
+Verificação: 49 testes da extensão, TypeScript, sintaxe dos scripts e build da extensão aprovados. Pasta instalável, ZIP e CRX 0.24.0 gerados; pacote conferido com adaptador local, licença e analytics desligado. No navegador, com conversa, biblioteca, upload e transporte simulados: criação e envio de texto/áudio pela mesma aba, indicadores antes do envio, prévia de áudio e envio a partir dela, editor a 360 px e fechamento por Escape com retorno do foco. O arquivo de áudio da fixture não testa decodificação ou transmissão real. O WhatsApp real não foi acionado, não houve envio a contatos reais nem deploy. Atualizar a extensão e recarregar a aba do WhatsApp para validar a compatibilidade da conta em uso.

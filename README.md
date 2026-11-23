@@ -11,7 +11,9 @@ Frontend Next.js/TypeScript e plugin Chrome MV3 para operar o CRM no WhatsApp We
 
 ### Aparência
 
-Em **Configurações → Aparência**, escolha Escuro original (padrão), Escuro minimalista, Claro ou Claro minimalista. A mudança é imediata e fica salva neste navegador por um ano. O seletor também está disponível nas telas de login/cadastro. Preferência ausente/inválida mantém o original; os temas não mudam dados ou permissões. Painel e autenticação usam os mesmos tokens; a extensão no WhatsApp continua com seu visual independente.
+Escolha entre **VisionSync** (`dark`, padrão: azul-marinho e ciano), **Contraste** (`contrast`: grafite, azul, ciano e lima) e **Claro** (`light`: azul profundo sobre fundo claro). O seletor rápido fica na barra lateral do painel; as prévias ficam em **Configurações → Aparência** e nas telas de login/cadastro. A mudança é imediata e fica salva neste navegador por um ano. Preferências antigas minimalistas claras migram para Claro; as escuras, para VisionSync. Preferência ausente/inválida mantém o padrão. Os temas não mudam dados ou permissões.
+
+Painel, autenticação e extensão usam as mesmas três paletas e a fonte Geist distribuída localmente, com licença em `brand/Geist-OFL.txt`. A escolha da extensão é independente da escolha do site; pode ser alterada em Aparência no WhatsApp ou no popup do Chrome.
 
 O HTML já recebe o tema escolhido pelo servidor, sem depender de um script que recolora a tela após abrir. Para isso, o layout lê um cookie de preferência e as páginas web são renderizadas por requisição. Não foram adicionadas bibliotecas de tema nem Tailwind.
 
@@ -101,9 +103,11 @@ npm run extension:build
 
 Ao abrir uma conversa com nome e telefone disponíveis, o plugin salva o contato no CRM ou completa um nome genérico, sem substituir nomes já cadastrados.
 
-Na barra lateral esquerda do plugin, use **Filtros de conversas** para acessar os filtros sem manter uma faixa sobre os contatos. Em **Aparência**, escolha Vision escuro, claro ou minimalista; a mesma preferência está no popup da extensão e é independente do tema do site. Em janelas estreitas, o painel aberto fica sobre o WhatsApp e pode ser fechado para recuperar espaço.
+Na barra lateral esquerda do plugin, use **Filtros de conversas** para acessar os filtros sem manter uma faixa sobre os contatos. Em **Aparência**, escolha VisionSync, Contraste ou Claro; a mesma preferência está no popup da extensão e é independente do tema do site. Em janelas estreitas, o painel aberto fica sobre o WhatsApp e pode ser fechado para recuperar espaço.
 
 Após atualizar o plugin, recarregue-o em `chrome://extensions` e recarregue a aba do WhatsApp Web para substituir também a integração que roda na página.
+
+Na extensão **0.24.0**, **Respostas rápidas → Nova** abre o editor sobre a conversa. **Salvar e enviar agora** permite cadastrar e usar texto, áudio ou anexo na própria aba. Áudios e notas de voz usam a sessão aberta do WhatsApp Web, sem agendamento e sem outro QR no servidor. **Preparar para revisão** abre a prévia de áudio local; digitando/gravando são solicitados antes do envio, conforme suporte do WhatsApp. O fluxo automático pelo servidor continua separado. Veja [Biblioteca de respostas](docs/08-biblioteca-respostas.md).
 
 Alternativa: no frontend, **Plugin WhatsApp → Baixar plugin para Chrome** entrega `visionsync-extension.zip`; extraia e carregue a pasta extraída. O pacote é gerado antes do build Next.js.
 

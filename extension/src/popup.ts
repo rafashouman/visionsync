@@ -1,5 +1,6 @@
 import { crmFailure, type ConnectionReport } from "./diagnostics"
 import { normalizeApiUrl } from "./policy"
+import { resolvePluginTheme } from "./themes"
 
 const input = (id: string) => document.getElementById(id) as HTMLInputElement
 const url = input("apiUrl")
@@ -8,14 +9,15 @@ const save = document.getElementById("save") as HTMLButtonElement
 const message = document.getElementById("msg")!
 function show(text: string, error = false) { message.textContent = text; message.className = `msg ${error ? "err" : "ok"}` }
 const theme = document.getElementById("theme") as HTMLSelectElement
-function applyTheme(value: string) { document.documentElement.dataset.vcrmTheme = ["light", "minimal"].includes(value) ? value : "dark" }
+function applyTheme(value: unknown) { theme.value = resolvePluginTheme(value); document.documentElement.dataset.vcrmTheme = theme.value }
 const storedPreferences = (value: unknown): Record<string, unknown> => value && typeof value === "object" ? value as Record<string, unknown> : {}
-chrome.storage.local.get("vcrmPrefs").then(cfg => { theme.value = ["light", "minimal"].includes(String(storedPreferences(cfg.vcrmPrefs).theme)) ? String(storedPreferences(cfg.vcrmPrefs).theme) : "dark"; applyTheme(theme.value) }).catch(() => show("Não foi possível carregar a aparência.", true))
+chrome.storage.local.get("vcrmPrefs").then(cfg => { applyTheme(storedPreferences(cfg.vcrmPrefs).theme) }).catch(() => show("Não foi possível carregar a aparência.", true))
 theme.addEventListener("change", async () => {
   try {
     applyTheme(theme.value)
     const cfg = await chrome.storage.local.get("vcrmPrefs")
     await chrome.storage.local.set({ vcrmPrefs: { ...storedPreferences(cfg.vcrmPrefs), theme: theme.value } })
+    show(`Tema ${theme.selectedOptions[0].textContent} aplicado.`)
   } catch { show("Não foi possível aplicar o tema.", true) }
 })
 document.getElementById("repair")!.addEventListener("click", async () => {

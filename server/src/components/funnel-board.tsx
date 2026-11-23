@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/page-header"
 import { btn, btnSm, card, chip, errorText, field, ghost, ghostSm, iconBtn, inner, link } from "@/lib/ui"
 
 const TZ = "America/Sao_Paulo"
-const COLORS = ["#3b82f6", "#f5b84a", "#34d399", "#e0245e", "#a78bfa", "#22d3ee", "#fb923c", "#f472b6"]
+const COLORS = ["#3b82f6", "#f5b84a", "#34d399", "#00e5ff", "#a78bfa", "#22d3ee", "#fb923c", "#f472b6"]
 const IDLE_DAYS = 3
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })

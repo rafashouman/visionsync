@@ -13,7 +13,7 @@ function fixture(clipboard: unknown, options: { exec?: () => boolean; paste?: bo
     DataTransfer: class { setData() {} }, ClipboardEvent: class {},
     chrome: { runtime: { sendMessage(_message: unknown, callback: (data: unknown) => void) { callback({ ok: true, status: 200 }) } } },
   }
-  const adapter = runInNewContext(`${script}\ntoast = message => notices.push(message); let sent = 0; clickSend = async () => { sent++; return true }; ({ insertIntoComposer, useReply, sends: () => sent })`, context) as {
+  const adapter = runInNewContext(`${script}\ntoast = message => notices.push(message); presenceBeforeSend = async () => true; let sent = 0; clickSend = async () => { sent++; return true }; ({ insertIntoComposer, useReply, sends: () => sent })`, context) as {
     insertIntoComposer: (text: string) => boolean
     useReply: (reply: unknown) => Promise<void>
     sends: () => number
